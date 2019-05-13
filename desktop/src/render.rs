@@ -1,7 +1,5 @@
 #![allow(clippy::invalid_ref)]
 
-use ruffle_core::backend::render::swf::{self, FillStyle, LineStyle};
-use ruffle_core::backend::render::{BitmapHandle, Color, RenderBackend, ShapeHandle, Transform};
 use glium::texture::texture2d::Texture2d;
 use glium::uniforms::{UniformValue, Uniforms};
 use glium::{
@@ -11,6 +9,8 @@ use glium::{
 use glutin::WindowedContext;
 use lyon::tessellation::geometry_builder::{BuffersBuilder, VertexBuffers};
 use lyon::{path::PathEvent, tessellation, tessellation::FillTessellator};
+use ruffle_core::backend::render::swf::{self, FillStyle, LineStyle};
+use ruffle_core::backend::render::{BitmapHandle, Color, RenderBackend, ShapeHandle, Transform};
 use std::collections::{HashMap, VecDeque};
 
 pub struct GliumRenderBackend {
@@ -478,6 +478,9 @@ impl RenderBackend for GliumRenderBackend {
             }
         }
     }
+
+    fn push_clip_layer(&mut self, _shape: ShapeHandle, _transform: &Transform) {}
+    fn pop_clip_layer(&mut self) {}
 }
 
 #[derive(Copy, Clone, Debug)]

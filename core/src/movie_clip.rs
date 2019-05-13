@@ -265,6 +265,7 @@ impl MovieClip {
         }
 
         if let Some(clip_depth) = &place_object.clip_depth {
+            
             character.set_clip_depth(*clip_depth);
         }
     }

@@ -18,6 +18,8 @@ pub trait RenderBackend {
     fn begin_frame(&mut self);
     fn clear(&mut self, color: Color);
     fn render_shape(&mut self, shape: ShapeHandle, transform: &Transform);
+    fn push_clip_layer(&mut self, shape: ShapeHandle, transform: &Transform);
+    fn pop_clip_layer(&mut self);
     fn end_frame(&mut self);
 }
 
@@ -55,6 +57,8 @@ impl RenderBackend for NullRenderer {
     fn end_frame(&mut self) {}
     fn clear(&mut self, _color: Color) {}
     fn render_shape(&mut self, _shape: ShapeHandle, _transform: &Transform) {}
+    fn push_clip_layer(&mut self, _shape: ShapeHandle, _transform: &Transform) {}
+    fn pop_clip_layer(&mut self) {}
 }
 
 pub fn glue_swf_jpeg_to_tables(jpeg_tables: &[u8], jpeg_data: &[u8]) -> Vec<u8> {

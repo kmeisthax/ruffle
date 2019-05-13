@@ -54,6 +54,9 @@ impl DisplayObjectImpl for DisplayObjectBase {
     fn set_clip_depth(&mut self, depth: Depth) {
         self.clip_depth = depth;
     }
+    fn depth(&self) -> Depth {
+        self.depth
+    }
     fn box_clone(&self) -> Box<DisplayObjectImpl> {
         Box::new(self.clone())
     }
@@ -69,6 +72,7 @@ pub trait DisplayObjectImpl: Trace {
     fn set_name(&mut self, name: &str);
     fn clip_depth(&self) -> Depth;
     fn set_clip_depth(&mut self, depth: Depth);
+    fn depth(&self) -> Depth;
 
     fn preload(&mut self, _context: &mut UpdateContext) {}
     fn run_frame(&mut self, _context: &mut UpdateContext) {}
@@ -126,6 +130,9 @@ macro_rules! impl_display_object {
         }
         fn set_clip_depth(&mut self, depth: $crate::prelude::Depth) {
             self.$field.set_clip_depth(depth)
+        }
+        fn depth(&self) -> $crate::prelude::Depth {
+            self.$field.depth()
         }
         fn box_clone(&self) -> Box<$crate::display_object::DisplayObjectImpl> {
             Box::new(self.clone())

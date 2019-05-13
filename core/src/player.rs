@@ -171,6 +171,7 @@ impl Player {
                 renderer: &mut *self.renderer,
                 library: &self.library,
                 transform_stack: &mut self.transform_stack,
+                clip_depth: None,
             };
             let stage = self.stage.borrow_mut();
             stage.render(&mut render_context);
@@ -197,4 +198,5 @@ pub struct RenderContext<'a> {
     pub renderer: &'a mut RenderBackend,
     pub library: &'a Library,
     pub transform_stack: &'a mut TransformStack,
+    pub clip_depth: Option<Depth>,
 }
