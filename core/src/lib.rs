@@ -1,5 +1,5 @@
 #[macro_use]
-mod display_object;
+pub mod display_object;
 
 mod audio;
 mod avm1;

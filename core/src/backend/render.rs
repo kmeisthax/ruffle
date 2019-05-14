@@ -1,3 +1,4 @@
+use crate::display_object::DisplayObject;
 pub use crate::{transform::Transform, Color};
 pub use swf;
 
@@ -18,7 +19,7 @@ pub trait RenderBackend {
     fn begin_frame(&mut self);
     fn clear(&mut self, color: Color);
     fn render_shape(&mut self, shape: ShapeHandle, transform: &Transform);
-    fn push_clip_layer(&mut self, shape: ShapeHandle, transform: &Transform);
+    fn push_clip_layer(&mut self, mask: &DisplayObject, transform: &Transform);
     fn pop_clip_layer(&mut self);
     fn end_frame(&mut self);
 }
@@ -57,7 +58,7 @@ impl RenderBackend for NullRenderer {
     fn end_frame(&mut self) {}
     fn clear(&mut self, _color: Color) {}
     fn render_shape(&mut self, _shape: ShapeHandle, _transform: &Transform) {}
-    fn push_clip_layer(&mut self, _shape: ShapeHandle, _transform: &Transform) {}
+    fn push_clip_layer(&mut self, _mask: &DisplayObject, _transform: &Transform) {}
     fn pop_clip_layer(&mut self) {}
 }
 

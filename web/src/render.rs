@@ -1,21 +1,22 @@
 use ruffle_core::backend::render::{
     swf, swf::CharacterId, BitmapHandle, Color, RenderBackend, ShapeHandle, Transform,
 };
+use ruffle_core::display_object::DisplayObject;
 use std::collections::HashMap;
 use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, Element, HtmlCanvasElement, HtmlImageElement};
 
-pub struct WebCanvasRenderBackend {
+pub struct WebCanvasRenderBackend<'a> {
     canvas: HtmlCanvasElement,
     context: CanvasRenderingContext2d,
+    canvas_stack: Vec<CanvasLayer<'a>>,
+    canvas_stack_top: usize,
+
     svg_defs: Element,
     color_matrix: Element,
     shapes: Vec<ShapeData>,
     bitmaps: Vec<BitmapData>,
     id_to_bitmap: HashMap<CharacterId, BitmapHandle>,
-    context_stack: Vec<(HtmlCanvasElement, CanvasRenderingContext2d)>,
-    context_stack_top: usize,
-    mask_state: Option<(ShapeHandle, Transform)>,
 }
 
 struct ShapeData {
@@ -31,7 +32,14 @@ struct BitmapData {
     data: String,
 }
 
-impl WebCanvasRenderBackend {
+#[derive(Clone)]
+struct CanvasLayer<'a> {
+    canvas: HtmlCanvasElement,
+    context: CanvasRenderingContext2d,
+    mask: Option<(&'a DisplayObject, Transform)>,
+}
+
+impl<'a> WebCanvasRenderBackend<'a> {
     pub fn new(canvas: &HtmlCanvasElement) -> Result<Self, Box<std::error::Error>> {
         let context: CanvasRenderingContext2d = canvas
             .get_context("2d")
@@ -68,24 +76,7 @@ impl WebCanvasRenderBackend {
             .map_err(|_| "Couldn't make SVG feColorMatrix element")?;
         color_matrix.set_attribute("type", "matrix");
         color_matrix.set_attribute("values", "1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 1 0");
-        // canvas
-        //     .set_attribute(
-        //         "style",
-        //         "color-interpolation-filters:linearRGB;color-interpolation:linearRGB",
-        //     )
-        //     .unwrap();
-        // color_matrix
-        //     .set_attribute(
-        //         "style",
-        //         "color-interpolation-filters:linearRGB;color-interpolation:linearRGB",
-        //     )
-        //     .unwrap();
-        // filter
-        //     .set_attribute(
-        //         "style",
-        //         "color-interpolation-filters:linearRGB;color-interpolation:linearRGB",
-        //     )
-        //     .unwrap();
+
         filter
             .append_child(&color_matrix.clone())
             .map_err(|_| "append_child failed")?;
@@ -101,22 +92,27 @@ impl WebCanvasRenderBackend {
             .append_child(&svg)
             .map_err(|_| "append_child failed")?;
 
+        let mut canvas_stack = vec![CanvasLayer {
+            canvas: canvas.clone(),
+            context: context.clone(),
+            mask: None,
+        }];
+
         Ok(Self {
             canvas: canvas.clone(),
+            context: context.clone(),
+            canvas_stack,
+            canvas_stack_top: 0,
             color_matrix,
             svg_defs,
-            context: context.clone(),
             shapes: vec![],
             bitmaps: vec![],
             id_to_bitmap: HashMap::new(),
-            context_stack: vec![(canvas.clone(), context.clone())],
-            context_stack_top: 0,
-            mask_state: None,
         })
     }
 }
 
-impl RenderBackend for WebCanvasRenderBackend {
+impl<'a> RenderBackend for WebCanvasRenderBackend<'a> {
     fn set_dimensions(&mut self, _width: u32, _height: u32) {}
 
     fn register_shape(&mut self, shape: &swf::Shape) -> ShapeHandle {
@@ -330,8 +326,8 @@ impl RenderBackend for WebCanvasRenderBackend {
     }
 
     fn end_frame(&mut self) {
-        while self.context_stack_top > 1 {
-            self.pop_clip_layer();
+        if self.canvas_stack_top > 1 {
+            log::info!("Unbalance canvas stack");
         }
     }
 
@@ -401,12 +397,12 @@ impl RenderBackend for WebCanvasRenderBackend {
         self.context.set_global_alpha(1.0);
     }
 
-    fn push_clip_layer(&mut self, shape: ShapeHandle, transform: &Transform) {
-        self.context_stack_top += 1;
-        if self.context_stack_top >= self.context_stack.len() {
+    fn push_clip_layer(&mut self, mask: &DisplayObject, transform: &Transform) {
+        self.canvas_stack_top += 1;
+        if self.canvas_stack_top >= self.canvas_stack.len() {
             let document = web_sys::window().unwrap().document().unwrap();
 
-            let mask_canvas: HtmlCanvasElement = document
+            let canvas: HtmlCanvasElement = document
                 .create_element("canvas")
                 .map_err(|_| "Unable to create Canvas")
                 .unwrap()
@@ -414,7 +410,7 @@ impl RenderBackend for WebCanvasRenderBackend {
                 .map_err(|_| "Expected Canvas")
                 .unwrap();
 
-            let mask_context = mask_canvas
+            let context = canvas
                 .get_context("2d")
                 .map_err(|_| "Could not create context")
                 .unwrap()
@@ -424,36 +420,44 @@ impl RenderBackend for WebCanvasRenderBackend {
                 .map_err(|_| "Expected CanvasRenderingContext2d")
                 .unwrap();
 
-            self.context_stack.push((mask_canvas, mask_context));
+            self.canvas_stack.push(CanvasLayer {
+                canvas,
+                context,
+                mask: Some((mask, transform.clone())),
+            });
         }
         let width = self.canvas.width();
         let height = self.canvas.height();
-        let (canvas, context) = &self.context_stack[self.context_stack_top];
+        let CanvasLayer {
+            canvas, context, ..
+        } = &self.canvas_stack[self.canvas_stack_top];
         canvas.set_width(width);
         canvas.set_height(height);
         self.context = context.clone();
         self.canvas = canvas.clone();
         self.context
             .clear_rect(0.0, 0.0, canvas.width().into(), canvas.height().into());
-        self.mask_state = Some((shape, transform.clone()));
     }
 
     fn pop_clip_layer(&mut self) {
+        let old_canvas_layer = &mut self.canvas_stack[self.canvas_stack_top];
+        self.canvas_stack_top -= 1;
+        let new_canvas_layer = &mut self.canvas_stack[self.canvas_stack_top];
+
+        if let Some(display_object) = old_canvas_layer.mask.take() {
+            self.context
+                .set_global_composite_operation("destination-in")
+                .unwrap();
+            display_object.render();
+            self.context
+                .set_global_composite_operation("source-over")
+                .unwrap();
+        }
+
+        self.context = new_canvas_layer.context.clone();
+        self.canvas = new_canvas_layer.canvas.clone();
         self.context
-            .set_global_composite_operation("destination-in")
+            .draw_image_with_html_canvas_element(&old_canvas_layer.canvas, 0.0, 0.0)
             .unwrap();
-        let (shape, transform) = self.mask_state.take().unwrap();
-        self.render_shape(shape, &transform);
-        self.context
-            .set_global_composite_operation("source-over")
-            .unwrap();
-        let mask_canvas = self.canvas.clone();
-        self.context_stack_top -= 1;
-        let (canvas, context) = &self.context_stack[self.context_stack_top];
-        context
-            .draw_image_with_html_canvas_element(&mask_canvas, 0.0, 0.0)
-            .unwrap();
-        self.context = context.clone();
-        self.canvas = canvas.clone();
     }
 }
