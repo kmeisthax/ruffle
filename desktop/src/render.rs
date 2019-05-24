@@ -76,8 +76,19 @@ impl GliumRenderBackend {
         &self.display
     }
 
+    fn test_register(&mut self, shape: &swf::Shape) {
+        use ruffle_core::shape_utils::ShapeIter;
+        let mut iter = ShapeIter::new(shape);
+        for cmd in iter.absolute_coordinates() {
+            log::info!("{:?}", cmd);
+        }
+        panic!();
+    }
+
     fn register_shape_internal(&mut self, shape: &swf::Shape) -> ShapeHandle {
         let handle = ShapeHandle(self.meshes.len());
+
+        self.test_register(shape);
 
         use lyon::tessellation::FillOptions;
 
