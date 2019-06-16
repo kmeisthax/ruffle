@@ -1,4 +1,3 @@
-use std::collections::{HashMap, VecDeque};
 use std::num::NonZeroU32;
 use swf::{FillStyle, LineStyle, ShapeRecord, Twips};
 
@@ -77,14 +76,25 @@ pub struct Path<'a, T> {
     style: &'a T,
     style_id: NonZeroU32,
 
-    start: Twips,
-    end: Twips,
+    start: (Twips, Twips),
+    end: (Twips, Twips),
     edges: Vec<Edge>,
 }
 
 impl<'a, T> Path<'a, T> {
+    fn new(style: &'a T, style_id: NonZeroU32) -> Self {
+        Self {
+            style,
+            style_id,
+
+            start: Default::default(),
+            end: Default::default(),
+            edges: vec![],
+        }
+    }
+
     fn add_edge(&mut self, edge: Edge) {
-        edges.push(edge)
+        self.edges.push(edge)
     }
 
     fn flip(&mut self) {
@@ -132,8 +142,8 @@ impl<'a, T> Path<'a, T> {
 
 #[derive(Debug)]
 pub enum DrawCommand<'a> {
-    Stroke(Path<'a, FillStyle>),
-    Fill(Path<'a, LineStyle>),
+    Stroke(Path<'a, LineStyle>),
+    Fill(Path<'a, FillStyle>),
 }
 
 #[derive(Debug)]
@@ -144,11 +154,14 @@ impl<'a, T> ActivePaths<'a, T> {
         Self(Vec::new())
     }
 
-    fn merge_path(&mut self, path: Path<'a, T>) {
-        if let None = self.0.iter_mut().find(|other| other.try_merge(&path)) {
-            // First time we've seen this style. Register a new active path.
-            self.0.push(path)
+    fn merge_path(&mut self, mut path: Path<'a, T>) {
+        for other in self.0.iter_mut() {
+            if other.try_merge(&mut path) {
+                return;
+            }
         }
+
+        self.0.push(path);
     }
 }
 
@@ -197,22 +210,47 @@ fn swf_shape_to_draws(shape: &swf::Shape) -> impl Iterator<Item = DrawCommand> {
     };
 
     fn visit_edge(state: &mut DrawShapeIter, edge: Edge) {
-        state.fill_style0.map(|path| path.add_edge(edge));
-        state.fill_style1.map(|path| path.add_edge(edge));
-        state.line_style.map(|path| path.add_edge(edge));
+        state.fill_style0.as_mut().map(|path| path.add_edge(edge));
+        state.fill_style1.as_mut().map(|path| path.add_edge(edge));
+        state.line_style.as_mut().map(|path| path.add_edge(edge));
     }
+
+    fn flush_paths(state: &mut DrawShapeIter) {}
+
+    fn flush_layer(state: &mut DrawShapeIter) {}
 
     std::iter::from_fn(move || {
         if let Some(record) = state.iter.next() {
             match record {
-                ShapeRecord::StyleChange(new_styles) => {
-                    if let Some((dx, dy)) = new_styles.move_to {
+                ShapeRecord::StyleChange(style_change) => {
+                    if let Some(ref styles) = style_change.new_styles {
+                        flush_layer(&mut state);
+                        state.fill_styles = &styles.fill_styles[..];
+                        state.line_styles = &styles.line_styles[..];
+                    }
+
+                    if let Some((dx, dy)) = style_change.move_to {
                         state.x += dx;
                         state.y += dy;
                         // We've lifted the pen, so we're starting a new path.
                         // Flush the previous path.
-                        let out = fills.into_iter().chain(strokes.into_iter());
-                        return Some(out);
+                        flush_paths(&mut state);
+                    }
+
+                    if let Some(fs) = style_change.fill_style_1 {
+                        let fill_style = &state.fill_styles[fs as usize - 1];
+                        let new_path = if fs != 0 { Some(Path::new(fill_style, NonZeroU32::new(fs).unwrap()) } else { None };
+                        if let Some(path) = state.fill_style1.replace(new_path) {
+                            state.fills.merge_path(path);
+                        }
+                    }
+
+                    if let Some(fs) = style_change.fill_style_0 {
+
+                    }
+
+                    if let Some(ls) = style_change.line_style {
+
                     }
                 }
 
