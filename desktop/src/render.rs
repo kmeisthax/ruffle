@@ -8,9 +8,12 @@ use glium::{
 };
 use glutin::WindowedContext;
 use lyon::tessellation::geometry_builder::{BuffersBuilder, VertexBuffers};
-use lyon::{path::PathEvent, tessellation, tessellation::FillTessellator};
+use lyon::{
+    path::PathEvent, tessellation, tessellation::FillTessellator, tessellation::StrokeTessellator,
+};
 use ruffle_core::backend::render::swf::{self, FillStyle, LineStyle};
 use ruffle_core::backend::render::{BitmapHandle, Color, RenderBackend, ShapeHandle, Transform};
+use ruffle_core::shape_utils::{DrawCommand, Edge};
 use std::collections::{HashMap, VecDeque};
 use swf::Twips;
 
@@ -76,69 +79,110 @@ impl GliumRenderBackend {
         &self.display
     }
 
-    fn test_register(&mut self, shape: &swf::Shape) {
-        use ruffle_core::shape_utils::ShapeIter;
-        let mut iter = ShapeIter::new(shape);
-        for cmd in iter.absolute_coordinates() {
-            log::info!("{:?}", cmd);
-        }
-        panic!();
-    }
-
     fn register_shape_internal(&mut self, shape: &swf::Shape) -> ShapeHandle {
         let handle = ShapeHandle(self.meshes.len());
 
-        self.test_register(shape);
+        use ruffle_core::shape_utils::ShapeConverter;
+        let shape_converter = ShapeConverter::from_shape(shape);
+        let commands = shape_converter.into_commands();
 
-        use lyon::tessellation::FillOptions;
+        use lyon::tessellation::{FillOptions, StrokeOptions};
 
         let mut mesh = Mesh { draws: vec![] };
 
-        let mut vertices: Vec<Vertex> = vec![];
-        let mut indices: Vec<u32> = vec![];
+        //let mut vertices: Vec<Vertex> = vec![];
+        //let mut indices: Vec<u32> = vec![];
 
-        let paths = swf_shape_to_lyon_paths(shape);
         let mut fill_tess = FillTessellator::new();
-
+        let mut stroke_tess = StrokeTessellator::new();
         let mut lyon_mesh: VertexBuffers<_, u32> = VertexBuffers::new();
-        for (cmd, path) in paths.clone() {
-            let color = match cmd {
-                PathCommandType::Fill(FillStyle::Color(color)) => [
-                    f32::from(color.r) / 255.0,
-                    f32::from(color.g) / 255.0,
-                    f32::from(color.b) / 255.0,
-                    f32::from(color.a) / 255.0,
-                ],
-                PathCommandType::Fill(_) => continue,
-                PathCommandType::Stroke(_) => continue,
-            };
-            let vertex_ctor = move |vertex: tessellation::FillVertex| Vertex {
-                position: [vertex.position.x, vertex.position.y],
-                color,
-            };
 
-            let mut buffers_builder = BuffersBuilder::new(&mut lyon_mesh, vertex_ctor);
+        for command in commands {
+            match command {
+                DrawCommand::Fill(path) => {
+                    let color = match path.style {
+                        FillStyle::Color(color) => [
+                            f32::from(color.r) / 255.0,
+                            f32::from(color.g) / 255.0,
+                            f32::from(color.b) / 255.0,
+                            f32::from(color.a) / 255.0,
+                        ],
+                        _ => continue,
+                    };
 
-            if let Err(e) = fill_tess.tessellate_path(
-                path.into_iter(),
-                &FillOptions::even_odd(),
-                &mut buffers_builder,
-            ) {
-                log::error!("Tessellation failure: {:?}", e);
-                self.meshes.push(mesh);
-                return handle;
+                    let vertex_ctor = move |vertex: tessellation::FillVertex| Vertex {
+                        position: [vertex.position.x, vertex.position.y],
+                        color,
+                    };
+                    let mut buffers_builder = BuffersBuilder::new(&mut lyon_mesh, vertex_ctor);
+
+                    if let Err(e) = fill_tess.tessellate_path(
+                        ruffle_path_to_lyon_path(path.start, path.end, path.edges.into_iter()),
+                        &FillOptions::even_odd(),
+                        &mut buffers_builder,
+                    ) {
+                        log::error!("Tessellation failure: {:?}", e);
+                        self.meshes.push(mesh);
+                        return handle;
+                    }
+
+                }
+                DrawCommand::Stroke(path) => {
+                    let color = [
+                        f32::from(path.style.color.r) / 255.0,
+                        f32::from(path.style.color.g) / 255.0,
+                        f32::from(path.style.color.b) / 255.0,
+                        f32::from(path.style.color.a) / 255.0,
+                    ];
+
+                    let vertex_ctor = move |vertex: tessellation::StrokeVertex| Vertex {
+                        position: [vertex.position.x, vertex.position.y],
+                        color,
+                    };
+                    let mut buffers_builder = BuffersBuilder::new(&mut lyon_mesh, vertex_ctor);
+
+                    let mut options = StrokeOptions::default()
+                        .with_line_width(path.style.width.to_pixels() as f32)
+                        .with_line_join(match path.style.join_style {
+                            swf::LineJoinStyle::Round => tessellation::LineJoin::Round,
+                            swf::LineJoinStyle::Bevel => tessellation::LineJoin::Bevel,
+                            swf::LineJoinStyle::Miter(_) => tessellation::LineJoin::MiterClip,
+                        })
+                        .with_start_cap(match path.style.start_cap {
+                            swf::LineCapStyle::None => tessellation::LineCap::Butt,
+                            swf::LineCapStyle::Round => tessellation::LineCap::Round,
+                            swf::LineCapStyle::Square => tessellation::LineCap::Square,
+                        })
+                        .with_end_cap(match path.style.end_cap {
+                            swf::LineCapStyle::None => tessellation::LineCap::Butt,
+                            swf::LineCapStyle::Round => tessellation::LineCap::Round,
+                            swf::LineCapStyle::Square => tessellation::LineCap::Square,
+                        });
+
+                    if let swf::LineJoinStyle::Miter(limit) = path.style.join_style {
+                        options = options.with_miter_limit(limit);
+                    }
+
+                    if let Err(e) = stroke_tess.tessellate_path(
+                        ruffle_path_to_lyon_path(path.start, path.end, path.edges.into_iter()),
+                        &options,
+                        &mut buffers_builder,
+                    ) {
+                        log::error!("Tessellation failure: {:?}", e);
+                        self.meshes.push(mesh);
+                        return handle;
+                    }
+                }
             }
-
-            let vert_offset = vertices.len() as u32;
-            vertices.extend(lyon_mesh.vertices.iter());
-            indices.extend(lyon_mesh.indices.iter().map(|&n| n + vert_offset));
         }
 
-        let vertex_buffer = glium::VertexBuffer::new(&self.display, &vertices[..]).unwrap();
+        let vertex_buffer =
+            glium::VertexBuffer::new(&self.display, &lyon_mesh.vertices[..]).unwrap();
+
         let index_buffer = glium::IndexBuffer::new(
             &self.display,
             glium::index::PrimitiveType::TrianglesList,
-            &indices[..],
+            &lyon_mesh.indices[..],
         )
         .unwrap();
 
@@ -148,176 +192,231 @@ impl GliumRenderBackend {
             index_buffer,
         });
 
-        fn swf_to_gl_matrix(m: swf::Matrix) -> [[f32; 3]; 3] {
-            let tx = m.translate_x.get() as f32;
-            let ty = m.translate_y.get() as f32;
-            let det = m.scale_x * m.scale_y - m.rotate_skew_1 * m.rotate_skew_0;
-            let mut a = m.scale_y / det;
-            let mut b = -m.rotate_skew_1 / det;
-            let mut c = -(tx * m.scale_y - m.rotate_skew_1 * ty) / det;
-            let mut d = -m.rotate_skew_0 / det;
-            let mut e = m.scale_x / det;
-            let mut f = (tx * m.rotate_skew_0 - m.scale_x * ty) / det;
-
-            a *= 20.0 / 32768.0;
-            b *= 20.0 / 32768.0;
-            d *= 20.0 / 32768.0;
-            e *= 20.0 / 32768.0;
-
-            c /= 32768.0;
-            f /= 32768.0;
-            c += 0.5;
-            f += 0.5;
-            [[a, d, 0.0], [b, e, 0.0], [c, f, 1.0]]
-        }
-
-        for (cmd, path) in paths {
-            let mut lyon_mesh: VertexBuffers<_, u32> = VertexBuffers::new();
-            if let PathCommandType::Stroke(_) = cmd {
-                continue;
-            }
-            let gradient_uniforms = match cmd {
-                PathCommandType::Fill(FillStyle::LinearGradient(gradient)) => {
-                    let mut colors: Vec<[f32; 4]> = Vec::with_capacity(8);
-                    let mut ratios: Vec<f32> = Vec::with_capacity(8);
-                    for (i, record) in gradient.records.iter().enumerate() {
-                        colors.push([
-                            record.color.r as f32 / 255.0,
-                            record.color.g as f32 / 255.0,
-                            record.color.b as f32 / 255.0,
-                            record.color.a as f32 / 255.0,
-                        ]);
-                        ratios.push(record.ratio as f32 / 255.0);
-                    }
-
-                    GradientUniforms {
-                        gradient_type: 0,
-                        ratios,
-                        colors,
-                        num_colors: gradient.records.len() as u32,
-                        matrix: swf_to_gl_matrix(gradient.matrix.clone()),
-                        repeat_mode: 0,
-                        focal_point: 0.0,
-                    }
-                }
-                PathCommandType::Fill(FillStyle::RadialGradient(gradient)) => {
-                    let mut colors: Vec<[f32; 4]> = Vec::with_capacity(8);
-                    let mut ratios: Vec<f32> = Vec::with_capacity(8);
-                    for (i, record) in gradient.records.iter().enumerate() {
-                        colors.push([
-                            record.color.r as f32 / 255.0,
-                            record.color.g as f32 / 255.0,
-                            record.color.b as f32 / 255.0,
-                            record.color.a as f32 / 255.0,
-                        ]);
-                        ratios.push(record.ratio as f32 / 255.0);
-                    }
-
-                    GradientUniforms {
-                        gradient_type: 1,
-                        ratios,
-                        colors,
-                        num_colors: gradient.records.len() as u32,
-                        matrix: swf_to_gl_matrix(gradient.matrix.clone()),
-                        repeat_mode: 0,
-                        focal_point: 0.0,
-                    }
-                }
-                PathCommandType::Fill(FillStyle::FocalGradient {
-                    gradient,
-                    focal_point,
-                }) => {
-                    let mut colors: Vec<[f32; 4]> = Vec::with_capacity(8);
-                    let mut ratios: Vec<f32> = Vec::with_capacity(8);
-                    for (i, record) in gradient.records.iter().enumerate() {
-                        colors.push([
-                            record.color.r as f32 / 255.0,
-                            record.color.g as f32 / 255.0,
-                            record.color.b as f32 / 255.0,
-                            record.color.a as f32 / 255.0,
-                        ]);
-                        ratios.push(record.ratio as f32 / 255.0);
-                    }
-
-                    GradientUniforms {
-                        gradient_type: 2,
-                        ratios,
-                        colors,
-                        num_colors: gradient.records.len() as u32,
-                        matrix: swf_to_gl_matrix(gradient.matrix.clone()),
-                        repeat_mode: 0,
-                        focal_point,
-                    }
-                }
-                // PathCommandType::Fill(FillStyle::Bitmap {
-                //     id,
-                //     matrix,
-                //     is_repeating,
-                //     is_smoothed,
-                // }) => {
-                //     let mut colors = [[0.0; 4]; 8];
-                //     let mut ratios = [0.0; 8];
-                //     for (i, record) in gradient.records.iter().enumerate() {
-                //         colors[i] = [
-                //             record.color.r as f32 / 255.0,
-                //             record.color.g as f32 / 255.0,
-                //             record.color.b as f32 / 255.0,
-                //             record.color.a as f32 / 255.0,
-                //         ];
-                //         ratios[i] = record.ratio as f32 / 255.0;
-                //     }
-
-                //     GradientUniforms {
-                //         gradient_type: 0,
-                //         ratios,
-                //         colors,
-                //         num_colors: gradient.records.len() as u32,
-                //         matrix: swf_to_gl_matrix(gradient.matrix.clone()),
-                //         repeat_mode: 0,
-                //         focal_point: 0.0,
-                //     }
-                // }
-                PathCommandType::Fill(_) => continue,
-                PathCommandType::Stroke(_) => continue,
-            };
-
-            let vertex_ctor = move |vertex: tessellation::FillVertex| Vertex {
-                position: [vertex.position.x, vertex.position.y],
-                color: [0.0, 0.0, 0.0, 0.0],
-            };
-
-            let mut buffers_builder = BuffersBuilder::new(&mut lyon_mesh, vertex_ctor);
-            if let Err(e) = fill_tess.tessellate_path(
-                path.into_iter(),
-                &FillOptions::even_odd(),
-                &mut buffers_builder,
-            ) {
-                log::error!("Tessellation failure: {:?}", e);
-                self.meshes.push(mesh);
-                return handle;
-            }
-
-            let vertex_buffer =
-                glium::VertexBuffer::new(&self.display, &lyon_mesh.vertices[..]).unwrap();
-            let index_buffer = glium::IndexBuffer::new(
-                &self.display,
-                glium::index::PrimitiveType::TrianglesList,
-                &lyon_mesh.indices[..],
-            )
-            .unwrap();
-
-            mesh.draws.push(Draw {
-                draw_type: DrawType::LinearGradient(gradient_uniforms),
-                vertex_buffer,
-                index_buffer,
-            });
-        }
-
         self.meshes.push(mesh);
+
+        //lyon_mesh.vertices
+
+        //     for cmd in cmds {
+        //         let color = match cmd {
+        //             PathCommandType::Fill(FillStyle::Color(color)) => [
+        //                 f32::from(color.r) / 255.0,
+        //                 f32::from(color.g) / 255.0,
+        //                 f32::from(color.b) / 255.0,
+        //                 f32::from(color.a) / 255.0,
+        //             ],
+        //             PathCommandType::Fill(_) => continue,
+        //             PathCommandType::Stroke(_) => continue,
+        //         };
+        //         let vertex_ctor = move |vertex: tessellation::FillVertex| Vertex {
+        //             position: [vertex.position.x, vertex.position.y],
+        //             color,
+        //         };
+
+        //         let mut buffers_builder = BuffersBuilder::new(&mut lyon_mesh, vertex_ctor);
+
+        //         if let Err(e) = fill_tess.tessellate_path(
+        //             path.into_iter(),
+        //             &FillOptions::even_odd(),
+        //             &mut buffers_builder,
+        //         ) {
+        //             log::error!("Tessellation failure: {:?}", e);
+        //             self.meshes.push(mesh);
+        //             return handle;
+        //         }
+
+        //         let vert_offset = vertices.len() as u32;
+        //         vertices.extend(lyon_mesh.vertices.iter());
+        //         indices.extend(lyon_mesh.indices.iter().map(|&n| n + vert_offset));
+        //     }
+
+        //     let vertex_buffer = glium::VertexBuffer::new(&self.display, &vertices[..]).unwrap();
+        //     let index_buffer = glium::IndexBuffer::new(
+        //         &self.display,
+        //         glium::index::PrimitiveType::TrianglesList,
+        //         &indices[..],
+        //     )
+        //     .unwrap();
+
+        //     mesh.draws.push(Draw {
+        //         draw_type: DrawType::Color,
+        //         vertex_buffer,
+        //         index_buffer,
+        //     });
+
+        //     fn swf_to_gl_matrix(m: swf::Matrix) -> [[f32; 3]; 3] {
+        //         let tx = m.translate_x.get() as f32;
+        //         let ty = m.translate_y.get() as f32;
+        //         let det = m.scale_x * m.scale_y - m.rotate_skew_1 * m.rotate_skew_0;
+        //         let mut a = m.scale_y / det;
+        //         let mut b = -m.rotate_skew_1 / det;
+        //         let mut c = -(tx * m.scale_y - m.rotate_skew_1 * ty) / det;
+        //         let mut d = -m.rotate_skew_0 / det;
+        //         let mut e = m.scale_x / det;
+        //         let mut f = (tx * m.rotate_skew_0 - m.scale_x * ty) / det;
+
+        //         a *= 20.0 / 32768.0;
+        //         b *= 20.0 / 32768.0;
+        //         d *= 20.0 / 32768.0;
+        //         e *= 20.0 / 32768.0;
+
+        //         c /= 32768.0;
+        //         f /= 32768.0;
+        //         c += 0.5;
+        //         f += 0.5;
+        //         [[a, d, 0.0], [b, e, 0.0], [c, f, 1.0]]
+        //     }
+
+        //     for (cmd, path) in paths {
+        //         let mut lyon_mesh: VertexBuffers<_, u32> = VertexBuffers::new();
+        //         if let PathCommandType::Stroke(_) = cmd {
+        //             continue;
+        //         }
+        //         let gradient_uniforms = match cmd {
+        //             PathCommandType::Fill(FillStyle::LinearGradient(gradient)) => {
+        //                 let mut colors: Vec<[f32; 4]> = Vec::with_capacity(8);
+        //                 let mut ratios: Vec<f32> = Vec::with_capacity(8);
+        //                 for (i, record) in gradient.records.iter().enumerate() {
+        //                     colors.push([
+        //                         record.color.r as f32 / 255.0,
+        //                         record.color.g as f32 / 255.0,
+        //                         record.color.b as f32 / 255.0,
+        //                         record.color.a as f32 / 255.0,
+        //                     ]);
+        //                     ratios.push(record.ratio as f32 / 255.0);
+        //                 }
+
+        //                 GradientUniforms {
+        //                     gradient_type: 0,
+        //                     ratios,
+        //                     colors,
+        //                     num_colors: gradient.records.len() as u32,
+        //                     matrix: swf_to_gl_matrix(gradient.matrix.clone()),
+        //                     repeat_mode: 0,
+        //                     focal_point: 0.0,
+        //                 }
+        //             }
+        //             PathCommandType::Fill(FillStyle::RadialGradient(gradient)) => {
+        //                 let mut colors: Vec<[f32; 4]> = Vec::with_capacity(8);
+        //                 let mut ratios: Vec<f32> = Vec::with_capacity(8);
+        //                 for (i, record) in gradient.records.iter().enumerate() {
+        //                     colors.push([
+        //                         record.color.r as f32 / 255.0,
+        //                         record.color.g as f32 / 255.0,
+        //                         record.color.b as f32 / 255.0,
+        //                         record.color.a as f32 / 255.0,
+        //                     ]);
+        //                     ratios.push(record.ratio as f32 / 255.0);
+        //                 }
+
+        //                 GradientUniforms {
+        //                     gradient_type: 1,
+        //                     ratios,
+        //                     colors,
+        //                     num_colors: gradient.records.len() as u32,
+        //                     matrix: swf_to_gl_matrix(gradient.matrix.clone()),
+        //                     repeat_mode: 0,
+        //                     focal_point: 0.0,
+        //                 }
+        //             }
+        //             PathCommandType::Fill(FillStyle::FocalGradient {
+        //                 gradient,
+        //                 focal_point,
+        //             }) => {
+        //                 let mut colors: Vec<[f32; 4]> = Vec::with_capacity(8);
+        //                 let mut ratios: Vec<f32> = Vec::with_capacity(8);
+        //                 for (i, record) in gradient.records.iter().enumerate() {
+        //                     colors.push([
+        //                         record.color.r as f32 / 255.0,
+        //                         record.color.g as f32 / 255.0,
+        //                         record.color.b as f32 / 255.0,
+        //                         record.color.a as f32 / 255.0,
+        //                     ]);
+        //                     ratios.push(record.ratio as f32 / 255.0);
+        //                 }
+
+        //                 GradientUniforms {
+        //                     gradient_type: 2,
+        //                     ratios,
+        //                     colors,
+        //                     num_colors: gradient.records.len() as u32,
+        //                     matrix: swf_to_gl_matrix(gradient.matrix.clone()),
+        //                     repeat_mode: 0,
+        //                     focal_point,
+        //                 }
+        //             }
+        //             // PathCommandType::Fill(FillStyle::Bitmap {
+        //             //     id,
+        //             //     matrix,
+        //             //     is_repeating,
+        //             //     is_smoothed,
+        //             // }) => {
+        //             //     let mut colors = [[0.0; 4]; 8];
+        //             //     let mut ratios = [0.0; 8];
+        //             //     for (i, record) in gradient.records.iter().enumerate() {
+        //             //         colors[i] = [
+        //             //             record.color.r as f32 / 255.0,
+        //             //             record.color.g as f32 / 255.0,
+        //             //             record.color.b as f32 / 255.0,
+        //             //             record.color.a as f32 / 255.0,
+        //             //         ];
+        //             //         ratios[i] = record.ratio as f32 / 255.0;
+        //             //     }
+
+        //             //     GradientUniforms {
+        //             //         gradient_type: 0,
+        //             //         ratios,
+        //             //         colors,
+        //             //         num_colors: gradient.records.len() as u32,
+        //             //         matrix: swf_to_gl_matrix(gradient.matrix.clone()),
+        //             //         repeat_mode: 0,
+        //             //         focal_point: 0.0,
+        //             //     }
+        //             // }
+        //             PathCommandType::Fill(_) => continue,
+        //             PathCommandType::Stroke(_) => continue,
+        //         };
+
+        //         let vertex_ctor = move |vertex: tessellation::FillVertex| Vertex {
+        //             position: [vertex.position.x, vertex.position.y],
+        //             color: [0.0, 0.0, 0.0, 0.0],
+        //         };
+
+        //         let mut buffers_builder = BuffersBuilder::new(&mut lyon_mesh, vertex_ctor);
+        //         if let Err(e) = fill_tess.tessellate_path(
+        //             path.into_iter(),
+        //             &FillOptions::even_odd(),
+        //             &mut buffers_builder,
+        //         ) {
+        //             log::error!("Tessellation failure: {:?}", e);
+        //             self.meshes.push(mesh);
+        //             return handle;
+        //         }
+
+        //         let vertex_buffer =
+        //             glium::VertexBuffer::new(&self.display, &lyon_mesh.vertices[..]).unwrap();
+        //         let index_buffer = glium::IndexBuffer::new(
+        //             &self.display,
+        //             glium::index::PrimitiveType::TrianglesList,
+        //             &lyon_mesh.indices[..],
+        //         )
+        //         .unwrap();
+
+        //         mesh.draws.push(Draw {
+        //             draw_type: DrawType::LinearGradient(gradient_uniforms),
+        //             vertex_buffer,
+        //             index_buffer,
+        //         });
+        //     }
+
+        //     self.meshes.push(mesh);
+
+        //     handle
+        // }
 
         handle
     }
 }
+
 
 impl RenderBackend for GliumRenderBackend {
     fn set_dimensions(&mut self, width: u32, height: u32) {
@@ -688,318 +787,39 @@ fn point(x: Twips, y: Twips) -> lyon::math::Point {
     lyon::math::Point::new(x.to_pixels() as f32, y.to_pixels() as f32)
 }
 
-fn swf_shape_to_lyon_paths(
-    shape: &swf::Shape,
-) -> Vec<(PathCommandType, Vec<lyon::path::PathEvent>)> {
-    let cmds = get_paths(shape);
-    let mut out_paths = vec![];
-    let mut prev = point(Default::default(), Default::default());
-    use lyon::geom::{LineSegment, QuadraticBezierSegment};
-    for cmd in cmds {
-        if let PathCommandType::Fill(_fill_style) = &cmd.command_type {
-            let mut out_path = vec![];
-            for path in cmd.paths {
-                out_path.push(PathEvent::MoveTo(point(path.start.0, path.start.1)));
-                prev = point(path.start.0, path.start.1);
-                for edge in path.edges {
-                    let out_cmd = match edge {
-                        PathEdge::Straight(x, y) => {
-                            let cmd = PathEvent::Line(LineSegment {
-                                from: prev,
-                                to: point(x, y),
-                            });
-                            prev = point(x, y);
-                            cmd
-                        }
-                        PathEdge::Bezier(x1, y1, x2, y2) => {
-                            let cmd = PathEvent::Quadratic(QuadraticBezierSegment {
-                                from: prev,
-                                ctrl: point(x1, y1),
-                                to: point(x2, y2),
-                            });
-                            prev = point(x2, y2);
-                            cmd
-                        }
-                    };
-                    out_path.push(out_cmd);
-                }
-            }
-
-            out_path.push(PathEvent::Close(LineSegment {
-                from: prev,
-                to: prev,
-            }));
-            out_paths.push((cmd.command_type.clone(), out_path));
-        }
-    }
-    out_paths
-}
-
-fn get_paths(shape: &swf::Shape) -> impl Iterator<Item = PathCommand> {
-    let mut x = Twips::new(0);
-    let mut y = Twips::new(0);
-
-    let mut fill_styles = &shape.styles.fill_styles;
-    let mut line_styles = &shape.styles.line_styles;
-    let mut fill_style_0 = 0;
-    let mut fill_style_1 = 0;
-    let mut line_style = 0;
-
-    let mut paths: HashMap<u32, PendingPaths> = HashMap::new();
-    let mut strokes: HashMap<u32, PendingPaths> = HashMap::new();
-
-    let mut out = vec![];
-
-    for record in &shape.shape {
-        use swf::ShapeRecord::*;
-        match record {
-            StyleChange(style_change) => {
-                if let Some((move_x, move_y)) = style_change.move_to {
-                    x = move_x;
-                    y = move_y;
-                }
-
-                if let Some(i) = style_change.fill_style_0 {
-                    fill_style_0 = i;
-                }
-
-                if let Some(i) = style_change.fill_style_1 {
-                    fill_style_1 = i;
-                }
-
-                if let Some(i) = style_change.line_style {
-                    line_style = i;
-                }
-
-                if let Some(ref new_styles) = style_change.new_styles {
-                    for (id, paths) in paths {
-                        let mut out_paths = vec![];
-                        for path in paths.open_paths {
-                            out_paths.push(path)
-                        }
-                        out.push(PathCommand {
-                            command_type: paths.command_type.clone(),
-                            paths: out_paths,
-                        })
-                    }
-                    for (id, paths) in strokes {
-                        for path in paths.open_paths {
-                            out.push(PathCommand {
-                                command_type: paths.command_type.clone(),
-                                paths: vec![path],
-                            })
-                        }
-                    }
-                    paths = HashMap::new();
-                    strokes = HashMap::new();
-                    fill_styles = &new_styles.fill_styles;
-                    line_styles = &new_styles.line_styles;
-                }
-            }
-
-            StraightEdge { delta_x, delta_y } => {
-                if fill_style_0 != 0 {
-                    let path = paths.entry(fill_style_0).or_insert_with(|| {
-                        PendingPaths::new(PathCommandType::Fill(
-                            fill_styles[fill_style_0 as usize - 1].clone(),
-                        ))
-                    });
-                    path.add_edge((x + *delta_x, y + *delta_y), PathEdge::Straight(x, y));
-                }
-
-                if fill_style_1 != 0 {
-                    let path = paths.entry(fill_style_1).or_insert_with(|| {
-                        PendingPaths::new(PathCommandType::Fill(
-                            fill_styles[fill_style_1 as usize - 1].clone(),
-                        ))
-                    });
-                    path.add_edge((x, y), PathEdge::Straight(x + *delta_x, y + *delta_y));
-                }
-
-                if line_style != 0 {
-                    let path = strokes.entry(line_style).or_insert_with(|| {
-                        PendingPaths::new(PathCommandType::Stroke(
-                            line_styles[line_style as usize - 1].clone(),
-                        ))
-                    });
-                    path.add_edge((x, y), PathEdge::Straight(x + *delta_x, y + *delta_y));
-                }
-
-                x += *delta_x;
-                y += *delta_y;
-            }
-
-            CurvedEdge {
-                control_delta_x,
-                control_delta_y,
-                anchor_delta_x,
-                anchor_delta_y,
-            } => {
-                if fill_style_0 != 0 {
-                    let path = paths.entry(fill_style_0).or_insert_with(|| {
-                        PendingPaths::new(PathCommandType::Fill(
-                            fill_styles[fill_style_0 as usize - 1].clone(),
-                        ))
-                    });
-                    path.add_edge(
-                        (
-                            x + *control_delta_x + *anchor_delta_x,
-                            y + *control_delta_y + *anchor_delta_y,
-                        ),
-                        PathEdge::Bezier(x + *control_delta_x, y + *control_delta_y, x, y),
-                    );
-                }
-
-                if fill_style_1 != 0 {
-                    let path = paths.entry(fill_style_1).or_insert_with(|| {
-                        PendingPaths::new(PathCommandType::Fill(
-                            fill_styles[fill_style_1 as usize - 1].clone(),
-                        ))
-                    });
-                    path.add_edge(
-                        (x, y),
-                        PathEdge::Bezier(
-                            x + *control_delta_x,
-                            y + *control_delta_y,
-                            x + *control_delta_x + *anchor_delta_x,
-                            y + *control_delta_y + *anchor_delta_y,
-                        ),
-                    );
-                }
-
-                if line_style != 0 {
-                    let path = strokes.entry(line_style).or_insert_with(|| {
-                        PendingPaths::new(PathCommandType::Stroke(
-                            line_styles[line_style as usize - 1].clone(),
-                        ))
-                    });
-                    path.add_edge(
-                        (x, y),
-                        PathEdge::Bezier(
-                            x + *control_delta_x,
-                            y + *control_delta_y,
-                            x + *control_delta_x + *anchor_delta_x,
-                            y + *control_delta_y + *anchor_delta_y,
-                        ),
-                    );
-                }
-
-                x += *control_delta_x + *anchor_delta_x;
-                y += *control_delta_y + *anchor_delta_y;
-            }
-        }
-    }
-
-    for (id, paths) in paths {
-        if paths.open_paths.is_empty() {
-            continue;
-        }
-        let mut out_paths = vec![];
-        for path in paths.open_paths {
-            out_paths.push(path)
-        }
-        out.push(PathCommand {
-            command_type: paths.command_type.clone(),
-            paths: out_paths,
-        })
-    }
-    for (id, paths) in strokes {
-        if paths.open_paths.is_empty() {
-            continue;
-        }
-        for path in paths.open_paths {
-            out.push(PathCommand {
-                command_type: paths.command_type.clone(),
-                paths: vec![path],
-            })
-        }
-    }
-    out.into_iter()
-}
-
-#[derive(Debug)]
-pub struct PathCommand {
-    command_type: PathCommandType,
-    paths: Vec<Path>,
-}
-
-#[derive(Clone, Debug)]
-enum PathCommandType {
-    Fill(FillStyle),
-    Stroke(LineStyle),
-}
-
-struct PendingPaths {
-    command_type: PathCommandType,
-    open_paths: Vec<Path>,
-}
-
-impl PendingPaths {
-    fn new(command_type: PathCommandType) -> PendingPaths {
-        Self {
-            command_type,
-            open_paths: vec![],
-        }
-    }
-
-    fn add_edge(&mut self, start: (Twips, Twips), edge: PathEdge) {
-        let new_path = Path {
-            start,
-            end: match edge {
-                PathEdge::Straight(x, y) => (x, y),
-                PathEdge::Bezier(_cx, _cy, ax, ay) => (ax, ay),
-            },
-
-            edges: {
-                let mut edges = VecDeque::new();
-                edges.push_back(edge);
-                edges
-            },
-        };
-
-        self.merge_subpath(new_path);
-    }
-
-    fn merge_subpath(&mut self, mut path: Path) {
-        let mut path_index = None;
-        for (i, other) in self.open_paths.iter_mut().enumerate() {
-            if path.end == other.start {
-                other.start = path.start;
-                for edge in path.edges.iter().rev() {
-                    other.edges.push_front(*edge);
-                }
-                path_index = Some(i);
-                break;
-            }
-
-            if other.end == path.start {
-                other.end = path.end;
-                other.edges.append(&mut path.edges);
-
-                path_index = Some(i);
-                break;
-            }
-        }
-
-        if let Some(i) = path_index {
-            let path = self.open_paths.swap_remove(i);
-            self.merge_subpath(path);
-        } else {
-            self.open_paths.push(path);
-        }
-    }
-}
-
-#[derive(Debug)]
-struct Path {
+fn ruffle_path_to_lyon_path(
     start: (Twips, Twips),
     end: (Twips, Twips),
+    edges: impl Iterator<Item = Edge>,
+) -> impl Iterator<Item = PathEvent> {
+    use lyon::geom::{LineSegment, QuadraticBezierSegment};
 
-    edges: VecDeque<PathEdge>,
-}
-
-#[derive(Copy, Clone, Debug)]
-enum PathEdge {
-    Straight(Twips, Twips),
-    Bezier(Twips, Twips, Twips, Twips),
+    let mut cur = point(start.0, start.1);
+    let end = point(end.0, end.1);
+    std::iter::once(PathEvent::MoveTo(cur))
+        .chain(edges.map(move |edge| match edge {
+            Edge::LineTo { x, y } => {
+                let next = point(x, y);
+                let cmd = PathEvent::Line(LineSegment {
+                    from: cur,
+                    to: next,
+                });
+                cur = next;
+                cmd
+            }
+            Edge::CurveTo { x1, y1, x2, y2 } => {
+                let next = point(x2, y2);
+                let cmd = PathEvent::Quadratic(QuadraticBezierSegment {
+                    from: cur,
+                    ctrl: point(x1, y1),
+                    to: next,
+                });
+                cur = next;
+                cmd
+            }
+        }))
+        .chain(std::iter::once(PathEvent::Close(LineSegment {
+            from: end,
+            to: end,
+        })))
 }
