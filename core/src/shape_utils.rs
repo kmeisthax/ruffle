@@ -72,6 +72,9 @@ pub enum Edge {
     },
 }
 
+/// A path segment is a series of edges linked togerther.
+/// Fill paths are directed, because the winding determines the fill-rule.
+/// Stroke paths are undirected.
 #[derive(Debug)]
 struct PathSegment {
     pub edges: Vec<Edge>,
@@ -79,24 +82,30 @@ struct PathSegment {
     pub end: (Twips, Twips),
 }
 
-#[derive(Debug)]
-pub struct Path<'a, T> {
-    pub style: &'a T,
-    pub style_id: NonZeroU32,
-    segments: Vec<PathSegment>,
-}
-
-
-impl<'a, T> Path<'a, T> {
-    fn new(style: &'a T, style_id: NonZeroU32) -> Self {
+impl PathSegment {
+    fn new(start: (Twips, Twips)) -> Self {
         Self {
-            style,
-            style_id,
-
-            segments: vec![],
+            edges: vec![],
+            start,
+            end: start,
         }
     }
 
+    fn is_closed(&self) -> bool {
+        // Flash doesn't contain any explicit "close" instructions (compared to SVG).
+        // A stroke is automatically closed if the start meets the end point.
+        self.start == self.end
+    }
+
+    /// Flips the direction of the path segment.
+    /// Flash fill paths are dual-sided, with fill style 1 indicating the positive side
+    /// and fill style 0 indicating the negative. We have to flip fill style 0 paths
+    /// in order to link them to fill style 1 paths.
+    fn flip(&mut self) {
+
+    }
+
+    /// Adds an edge to the end of the path segment.
     fn add_edge(&mut self, edge: Edge) {
         self.edges.push(edge);
         self.end = match edge {
@@ -104,69 +113,20 @@ impl<'a, T> Path<'a, T> {
             Edge::CurveTo { x2, y2, .. } => (x2, y2),
         };
     }
-
-    fn flip(&mut self) {
-        self.edges.reverse();
-        // for edge in &mut self.edges {
-        //     match edge {
-        //         Edge::LineTo { x, y } => (),
-        //         Edge::CurveTo { x1, y1, x2, y2 } => {
-
-        //         }
-        //     }
-        // }
-        std::mem::swap(&mut self.start, &mut self.end);
-    }
-
-    fn try_merge(&mut self, path: &Path<'a, T>) -> bool {
-        if self.style_id != path.style_id {
-            false
-        } else if path.end == self.start {
-            let mut edges = path.edges.clone();
+    
+    /// Attemps to merge another path segment.
+    /// One path's start must meet the other path's end.
+    /// Returns true if the merge is successful.
+    fn try_merge(&mut self, other: PathSegment, directed: bool) -> bool {
+        if other.end == self.start {
+            let mut edges = other.edges.clone();
             edges.extend_from_slice(self.edges.as_slice());
             self.edges = edges;
-            self.start = path.start;
+            self.start = other.start;
             true
-        } else if self.end == path.start {
+        } else if self.end == other.start {
             self.edges.extend_from_slice(path.edges.as_slice());
-            self.end = path.end;
-            true
-        } else {
-            false
-        }
-    }
-
-    // fn try_merge_reverse(&mut self, path: &Path<'a, T>) -> bool {
-    //     if self.style_id != path.style_id {
-    //         false
-    //     } else if path.start == self.start {
-    //         self.start = path.end;
-    //         true
-    //     } else if self.end == path.start {
-    //         self.edges.extend_from_slice(path.edges.as_slice());
-    //         self.end = path.end;
-    //         true
-    //     } else {
-    //         false
-    //     }
-    // }
-
-    fn try_merge_undirected(&mut self, path: &Path<'a, T>) -> bool {
-        if self.style_id != path.style_id {
-            false
-        } else if path.end == self.start {
-            self.start = path.start;
-            true
-        } else if self.end == path.start {
-            self.edges.extend_from_slice(path.edges.as_slice());
-            self.end = path.end;
-            true
-        } else if path.start == self.start {
-            self.start = path.start;
-            true
-        } else if self.end == path.end {
-            self.edges.extend_from_slice(path.edges.as_slice());
-            self.end = path.end;
+            self.end = other.end;
             true
         } else {
             false
@@ -174,40 +134,78 @@ impl<'a, T> Path<'a, T> {
     }
 }
 
+/// The internal path structure used by ShapeConverter.
+/// 
+/// Each path is uniquely identified by its fill/stroke style. But Flash gives
+/// the path edges as an "edge soup" -- they can arrive in an arbitrary order.
+/// We have to link the edges together for each path. This structure contains
+/// a list of path segment, and each time a path segment is added, it will try
+/// to merge it with an existing segment.
 #[derive(Debug)]
-pub enum DrawCommand<'a> {
-    Stroke(Path<'a, LineStyle>),
-    Fill(Path<'a, FillStyle>),
+pub struct PendingPath<'a, T> {
+    /// The fill or stroke style associated with this path.
+    style: &'a T,
+
+    /// The ID associated with the above style. Used for hashing/lookups.
+    /// The IDs are reset whenever a StyleChangeRecord is reached that contains new styles.
+    style_id: NonZeroU32,
+
+    /// The list of path segments for this fill/stroke.
+    /// For fills, this should turn into a list of closed paths when the shape is complete.
+    /// Strokes may or may not be closed.
+    segments: Vec<PathSegment>,
+}
+
+
+impl<'a, T> PendingPath<'a, T> {
+    fn new(style: &'a T, style_id: NonZeroU32) -> Self {
+        Self {
+            segments: vec![],
+        }
+    }
+}
+
+/// DrawCommands are the output of the ShapeCoverter.
+#[derive(Debug)]
+pub enum DrawPath<'a> {
+    Stroke { style: &'a LineStyle, commands: &'a [DrawCommand], is_closed: bool },
+    Fill { style: &'a FillStyle, commands: &'a [DrawCommand] },
 }
 
 #[derive(Debug)]
-pub struct ActivePaths<'a, T>(HashMap<NonZeroU32, Vec<Path<'a, T>>>);
+pub enum DrawCommand {
+    MoveTo { x: Twips, y: Twips },
+    LineTo { x: Twips, y: Twips },
+    CurveTo { x1: Twips, y1 : Twips, x2: Twips, y2: Twips },
+}
 
-impl<'a, T> ActivePaths<'a, T> {
+/// `PendingPathMap` maps from style IDs to the path associated with that style.
+/// Each path is uniquely identified by its style ID (until the style list changes).
+/// Style IDs tend to be sequential, so we just use a `Vec`.
+#[derive(Debug)]
+pub struct PendingPathMap<'a, T>(Vec<PendingPath<'a, T>>);
+
+impl<'a, T> PendingPathMap<'a, T> {
     fn new() -> Self {
-        Self(HashMap::new())
+        Self(Vec::new())
     }
 
-    fn merge_path(&mut self, mut path: Path<'a, T>) {
-        let mut style_paths = self.0.entry(path.style_id).or_insert_with(|| Vec::with_capacity(1));
-        for other in style_paths.iter_mut() {
-            if other.try_merge(&mut path) {
-                return;
+    fn merge_path(&mut self, style_id: NonZeroU32, mut path_segment: PathSegment) {
+        let pending_path = if let Some(pending_path) = self.0.get_mut(style_id.get()) {
+            pending_path
+        } else {
+            let id = style_id.get() as usize;
+            if self.0.len() <= id {
+                self.0.resize_with(id, || PendingPath::new(&));
             }
-        }
+            self.0.last_mut()
+        };
 
-        style_paths.push(path);
+        pending_path.merge_path(path_segment);
     }
 
-    fn merge_path_undirected(&mut self, mut path: Path<'a, T>) {
-        let mut style_paths = self.0.entry(path.style_id).or_insert_with(|| Vec::with_capacity(1));
-        for other in style_paths.iter_mut() {
-            if other.try_merge_undirected(&mut path) {
-                return;
-            }
-        }
+    fn flush() {
 
-        style_paths.push(path);
     }
 }
 
@@ -227,17 +225,17 @@ pub struct ShapeConverter<'a> {
     // The current path that the pen is drawing.
     // Each edge command gets added to the appropriate path, and when the pen lifts,
     // the path will be merged into the active paths.
-    fill_style0: Option<Path<'a, FillStyle>>, // Negative side of pen -- path gets flipped
-    fill_style1: Option<Path<'a, FillStyle>>, // Positive side of pen
-    line_style: Option<Path<'a, LineStyle>>,  // Undirected path
+    fill_style0: Option<(NonZeroU32, PathSegment)>, // Negative side of pen -- path gets flipped
+    fill_style1: Option<(NonZeroU32, PathSegment)>, // Positive side of pen
+    line_style: Option<(NonZeroU32, PathSegment)>,  // Undirected path
 
     // Paths. These get flushed when the shape is complete
     // and for each new layer.
-    fills: ActivePaths<'a, FillStyle>,
-    strokes: ActivePaths<'a, LineStyle>,
+    fills: PendingPathMap<'a, FillStyle>,
+    strokes: PendingPathMap<'a, LineStyle>,
 
     // Output.
-    commands: Vec<DrawCommand<'a>>,
+    commands: Vec<DrawPath<'a>>,
 }
 
 impl<'a> ShapeConverter<'a> {
@@ -257,14 +255,14 @@ impl<'a> ShapeConverter<'a> {
             fill_style1: None,
             line_style: None,
 
-            fills: ActivePaths::new(),
-            strokes: ActivePaths::new(),
+            fills: PendingPathMap::new(),
+            strokes: PendingPathMap::new(),
 
             commands: Vec::with_capacity(Self::DEFAULT_CAPACITY),
         }
     }
 
-    pub fn into_commands(mut self) -> Vec<DrawCommand<'a>> {
+    pub fn into_commands(mut self) -> Vec<DrawPath<'a>> {
         while let Some(record) = self.iter.next() {
             match record {
                 ShapeRecord::StyleChange(style_change) => {
@@ -284,42 +282,42 @@ impl<'a> ShapeConverter<'a> {
                     }
 
                     if let Some(fs) = style_change.fill_style_1 {
-                        if let Some(path) = self.fill_style1.take() {
-                            self.fills.merge_path(path);
+                        if let Some((id, segment)) = self.fill_style1.take() {
+                            self.fills.merge_path(id, segment);
                         }
 
                         self.fill_style1 = if fs != 0 {
-                            let fs_index = NonZeroU32::new(fs).unwrap();
+                            let id = NonZeroU32::new(fs).unwrap();
                             let fill_style = &self.fill_styles[fs as usize - 1];
-                            Some(Path::new(fill_style, fs_index, (self.x, self.y)))
+                            Some((id, PathSegment::new((self.x, self.y))))
                         } else {
                             None
                         }
                     }
 
                     if let Some(fs) = style_change.fill_style_0 {
-                        if let Some(path) = self.fill_style0.take() {
-                            self.fills.merge_path(path);
+                        if let Some((id, segment)) = self.fill_style0.take() {
+                            self.fills.merge_path(id, segment);
                         }
 
                         self.fill_style0 = if fs != 0 {
-                            let fs_index = NonZeroU32::new(fs).unwrap();
+                            let id = NonZeroU32::new(fs).unwrap();
                             let fill_style = &self.fill_styles[fs as usize - 1];
-                            Some(Path::new(fill_style, fs_index, (self.x, self.y)))
+                            Some((id, PathSegment::new((self.x, self.y))))
                         } else {
                             None
                         }
                     }
 
                     if let Some(ls) = style_change.line_style {
-                        if let Some(path) = self.line_style.take() {
-                            self.strokes.merge_path_undirected(path);
+                        if let Some((id, segment)) = self.line_style.take() {
+                            self.strokes.merge_path(id, segment);
                         }
 
                         self.line_style = if ls != 0 {
-                            let ls_index = NonZeroU32::new(ls).unwrap();
+                            let id = NonZeroU32::new(ls).unwrap();
                             let line_style = &self.line_styles[ls as usize - 1];
-                            Some(Path::new(line_style, ls_index, (self.x, self.y)))
+                            Some((id, PathSegment::new((self.x, self.y))))
                         } else {
                             None
                         }
