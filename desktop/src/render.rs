@@ -13,7 +13,7 @@ use lyon::{
 };
 use ruffle_core::backend::render::swf::{self, FillStyle, LineStyle};
 use ruffle_core::backend::render::{BitmapHandle, Color, RenderBackend, ShapeHandle, Transform};
-use ruffle_core::shape_utils::{DrawCommand, Edge};
+use ruffle_core::shape_utils::{DrawCommand, DrawPath};
 use std::collections::{HashMap, VecDeque};
 use swf::Twips;
 
@@ -84,7 +84,7 @@ impl GliumRenderBackend {
 
         use ruffle_core::shape_utils::ShapeConverter;
         let shape_converter = ShapeConverter::from_shape(shape);
-        let commands = shape_converter.into_commands();
+        let paths = shape_converter.into_commands();
 
         use lyon::tessellation::{FillOptions, StrokeOptions};
 
@@ -97,17 +97,43 @@ impl GliumRenderBackend {
         let mut stroke_tess = StrokeTessellator::new();
         let mut lyon_mesh: VertexBuffers<_, u32> = VertexBuffers::new();
 
-        for command in commands {
-            match command {
-                DrawCommand::Fill(path) => {
-                    let color = match path.style {
-                        FillStyle::Color(color) => [
+        fn flush_draw(mesh: &mut Mesh, lyon_mesh: &mut VertexBuffers<Vertex, u32>, display: &Display)
+        {
+            if lyon_mesh.vertices.is_empty() {
+                return;
+            }
+
+            let vertex_buffer =
+                glium::VertexBuffer::new(display, &lyon_mesh.vertices[..]).unwrap();
+
+            let index_buffer = glium::IndexBuffer::new(
+                display,
+                glium::index::PrimitiveType::TrianglesList,
+                &lyon_mesh.indices[..],
+            )
+            .unwrap();
+
+            mesh.draws.push(Draw {
+                draw_type: DrawType::Color,
+                vertex_buffer,
+                index_buffer,
+            });
+
+            *lyon_mesh = VertexBuffers::new();
+        }
+
+        for path in paths {
+            match path {
+                DrawPath::Fill { style, commands } => {
+                    let color = if let FillStyle::Color(color) = style {
+                        [
                             f32::from(color.r) / 255.0,
                             f32::from(color.g) / 255.0,
                             f32::from(color.b) / 255.0,
                             f32::from(color.a) / 255.0,
-                        ],
-                        _ => continue,
+                        ]
+                    } else {
+                        continue;
                     };
 
                     let vertex_ctor = move |vertex: tessellation::FillVertex| Vertex {
@@ -117,22 +143,45 @@ impl GliumRenderBackend {
                     let mut buffers_builder = BuffersBuilder::new(&mut lyon_mesh, vertex_ctor);
 
                     if let Err(e) = fill_tess.tessellate_path(
-                        ruffle_path_to_lyon_path(path.start, path.end, path.edges.into_iter()),
+                        ruffle_path_to_lyon_path(commands.into_iter(), true),
                         &FillOptions::even_odd(),
                         &mut buffers_builder,
                     ) {
+                        println!("Failure");
                         log::error!("Tessellation failure: {:?}", e);
                         self.meshes.push(mesh);
                         return handle;
                     }
 
                 }
-                DrawCommand::Stroke(path) => {
+                // DrawPath::Fill { style: FillStyle::LinearGradient(gradient), commands } => {
+                //     flush_draw(&mut mesh, &mut lyon_mesh, &self.display);
+
+                //     let vertex_ctor = move |vertex: tessellation::FillVertex|  {
+                //         position: [vertex.position.x, vertex.position.y],
+                //         color: [1.0, 1.0, 1.0, 1.0],
+                //     };
+                //     let mut buffers_builder = BuffersBuilder::new(&mut lyon_mesh, vertex_ctor);
+
+                //     if let Err(e) = fill_tess.tessellate_path(
+                //         ruffle_path_to_lyon_path(commands.into_iter(), true),
+                //         &FillOptions::even_odd(),
+                //         &mut buffers_builder,
+                //     ) {
+                //         println!("Failure");
+                //         log::error!("Tessellation failure: {:?}", e);
+                //         self.meshes.push(mesh);
+                //         return handle;
+                //     }
+
+                //     flush_draw(&mut mesh, &mut lyon_mesh, &self.display);
+                // }
+                DrawPath::Stroke { style, commands } => {
                     let color = [
-                        f32::from(path.style.color.r) / 255.0,
-                        f32::from(path.style.color.g) / 255.0,
-                        f32::from(path.style.color.b) / 255.0,
-                        f32::from(path.style.color.a) / 255.0,
+                        f32::from(style.color.r) / 255.0,
+                        f32::from(style.color.g) / 255.0,
+                        f32::from(style.color.b) / 255.0,
+                        f32::from(style.color.a) / 255.0,
                     ];
 
                     let vertex_ctor = move |vertex: tessellation::StrokeVertex| Vertex {
@@ -141,30 +190,37 @@ impl GliumRenderBackend {
                     };
                     let mut buffers_builder = BuffersBuilder::new(&mut lyon_mesh, vertex_ctor);
 
+                    // TODO(Herschel): 0 width indicates "hairline".
+                    let width = if style.width.to_pixels() >= 1.0 {
+                        style.width.to_pixels() as f32
+                    } else {
+                        1.0
+                    };
+
                     let mut options = StrokeOptions::default()
-                        .with_line_width(path.style.width.to_pixels() as f32)
-                        .with_line_join(match path.style.join_style {
+                        .with_line_width(width)
+                        .with_line_join(match style.join_style {
                             swf::LineJoinStyle::Round => tessellation::LineJoin::Round,
                             swf::LineJoinStyle::Bevel => tessellation::LineJoin::Bevel,
                             swf::LineJoinStyle::Miter(_) => tessellation::LineJoin::MiterClip,
                         })
-                        .with_start_cap(match path.style.start_cap {
+                        .with_start_cap(match style.start_cap {
                             swf::LineCapStyle::None => tessellation::LineCap::Butt,
                             swf::LineCapStyle::Round => tessellation::LineCap::Round,
                             swf::LineCapStyle::Square => tessellation::LineCap::Square,
                         })
-                        .with_end_cap(match path.style.end_cap {
+                        .with_end_cap(match style.end_cap {
                             swf::LineCapStyle::None => tessellation::LineCap::Butt,
                             swf::LineCapStyle::Round => tessellation::LineCap::Round,
                             swf::LineCapStyle::Square => tessellation::LineCap::Square,
                         });
 
-                    if let swf::LineJoinStyle::Miter(limit) = path.style.join_style {
+                    if let swf::LineJoinStyle::Miter(limit) = style.join_style {
                         options = options.with_miter_limit(limit);
                     }
 
                     if let Err(e) = stroke_tess.tessellate_path(
-                        ruffle_path_to_lyon_path(path.start, path.end, path.edges.into_iter()),
+                        ruffle_path_to_lyon_path(commands.into_iter(), false),
                         &options,
                         &mut buffers_builder,
                     ) {
@@ -173,24 +229,11 @@ impl GliumRenderBackend {
                         return handle;
                     }
                 }
+                _ => (),
             }
         }
 
-        let vertex_buffer =
-            glium::VertexBuffer::new(&self.display, &lyon_mesh.vertices[..]).unwrap();
-
-        let index_buffer = glium::IndexBuffer::new(
-            &self.display,
-            glium::index::PrimitiveType::TrianglesList,
-            &lyon_mesh.indices[..],
-        )
-        .unwrap();
-
-        mesh.draws.push(Draw {
-            draw_type: DrawType::Color,
-            vertex_buffer,
-            index_buffer,
-        });
+        flush_draw(&mut mesh, &mut lyon_mesh, &self.display);
 
         self.meshes.push(mesh);
 
@@ -788,38 +831,35 @@ fn point(x: Twips, y: Twips) -> lyon::math::Point {
 }
 
 fn ruffle_path_to_lyon_path(
-    start: (Twips, Twips),
-    end: (Twips, Twips),
-    edges: impl Iterator<Item = Edge>,
+    commands: impl Iterator<Item = DrawCommand>,
+    is_fill: bool,
 ) -> impl Iterator<Item = PathEvent> {
     use lyon::geom::{LineSegment, QuadraticBezierSegment};
 
-    let mut cur = point(start.0, start.1);
-    let end = point(end.0, end.1);
-    std::iter::once(PathEvent::MoveTo(cur))
-        .chain(edges.map(move |edge| match edge {
-            Edge::LineTo { x, y } => {
-                let next = point(x, y);
-                let cmd = PathEvent::Line(LineSegment {
-                    from: cur,
-                    to: next,
-                });
-                cur = next;
-                cmd
-            }
-            Edge::CurveTo { x1, y1, x2, y2 } => {
-                let next = point(x2, y2);
-                let cmd = PathEvent::Quadratic(QuadraticBezierSegment {
-                    from: cur,
-                    ctrl: point(x1, y1),
-                    to: next,
-                });
-                cur = next;
-                cmd
-            }
-        }))
-        .chain(std::iter::once(PathEvent::Close(LineSegment {
-            from: end,
-            to: end,
-        })))
+    let mut cur = lyon::math::Point::new(0.0, 0.0);
+    commands.map(move |command| match command {
+        DrawCommand::MoveTo { x, y } => {
+            cur = point(x, y);
+            PathEvent::MoveTo(cur)
+        }
+        DrawCommand::LineTo { x, y } => {
+            let next = point(x, y);
+            let cmd = PathEvent::Line(LineSegment {
+                from: cur,
+                to: next,
+            });
+            cur = next;
+            cmd
+        }
+        DrawCommand::CurveTo { x1, y1, x2, y2 } => {
+            let next = point(x2, y2);
+            let cmd = PathEvent::Quadratic(QuadraticBezierSegment {
+                from: cur,
+                ctrl: point(x1, y1),
+                to: next,
+            });
+            cur = next;
+            cmd
+        }
+    })
 }
