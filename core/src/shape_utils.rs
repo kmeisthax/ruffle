@@ -96,7 +96,6 @@ impl PathSegment {
     /// and fill style 0 indicating the negative. We have to flip fill style 0 paths
     /// in order to link them to fill style 1 paths.
     fn flip(&mut self) {
-        println!("{:?}", self.edges);
         self.edges.reverse();
         for i in 0..self.edges.len() - 1 {
             let edge = match (self.edges[i], self.edges[i + 1]) {
@@ -129,7 +128,6 @@ impl PathSegment {
             },
         };
         *self.edges.last_mut().unwrap() = edge;
-        println!("reverse: {:?}", self.edges);
         std::mem::swap(&mut self.start, &mut self.end);
     }
 
@@ -348,7 +346,6 @@ impl<'a> ShapeConverter<'a> {
                     if let Some(ref styles) = style_change.new_styles {
                         // A new style list is also used to indicate a new drawing layer.
                         self.flush_layer();
-                        println!("Styles: {:?}", styles);
                         self.fill_styles = &styles.fill_styles[..];
                         self.line_styles = &styles.line_styles[..];
                     }
@@ -533,7 +530,5 @@ impl<'a> ShapeConverter<'a> {
 
         self.fills.0.clear();
         self.strokes.0.clear();
-
-        println!("{:?}", self.commands);
     }
 }
