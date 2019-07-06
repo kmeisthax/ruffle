@@ -160,7 +160,7 @@ impl GliumRenderBackend {
 
                         if let Err(e) = fill_tess.tessellate_path(
                             ruffle_path_to_lyon_path(commands.into_iter(), true),
-                            &FillOptions::even_odd(),
+                            &FillOptions::tolerance(5.0),
                             &mut buffers_builder,
                         ) {
                             println!("Failure");

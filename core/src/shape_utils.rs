@@ -59,17 +59,10 @@ pub fn calculate_shape_bounds(shape_records: &[swf::ShapeRecord]) -> swf::Rectan
 }
 
 #[derive(Debug, Copy, Clone)]
-pub enum Edge {
-    LineTo {
-        x: Twips,
-        y: Twips,
-    },
-    CurveTo {
-        x1: Twips,
-        y1: Twips,
-        x2: Twips,
-        y2: Twips,
-    },
+pub struct Point {
+    x: Twips,
+    y: Twips,
+    is_bezier_control: bool,
 }
 
 /// A path segment is a series of edges linked togerther.
@@ -77,17 +70,13 @@ pub enum Edge {
 /// Stroke paths are undirected.
 #[derive(Debug)]
 struct PathSegment {
-    pub edges: Vec<Edge>,
-    pub start: (Twips, Twips),
-    pub end: (Twips, Twips),
+    pub points: Vec<Point>,
 }
 
 impl PathSegment {
     fn new(start: (Twips, Twips)) -> Self {
         Self {
-            edges: vec![],
-            start,
-            end: start,
+            points: vec![Point { x: start.0, y: start.1, is_bezier_control: false }],
         }
     }
 
@@ -96,73 +85,47 @@ impl PathSegment {
     /// and fill style 0 indicating the negative. We have to flip fill style 0 paths
     /// in order to link them to fill style 1 paths.
     fn flip(&mut self) {
-        self.edges.reverse();
-        for i in 0..self.edges.len() - 1 {
-            let edge = match (self.edges[i], self.edges[i + 1]) {
-                (Edge::LineTo { .. }, Edge::LineTo { x, y }) => Edge::LineTo { x, y },
-                (Edge::LineTo { .. }, Edge::CurveTo { x2, y2, .. }) => {
-                    Edge::LineTo { x: x2, y: y2 }
-                }
-                (Edge::CurveTo { x1, y1, .. }, Edge::LineTo { x, y }) => Edge::CurveTo {
-                    x1,
-                    y1,
-                    x2: x,
-                    y2: y,
-                },
-                (Edge::CurveTo { x1, y1, .. }, Edge::CurveTo { x2, y2, .. }) => {
-                    Edge::CurveTo { x1, y1, x2, y2 }
-                }
-            };
-            self.edges[i] = edge;
-        }
-        let edge = match self.edges[self.edges.len() - 1] {
-            Edge::LineTo { .. } => Edge::LineTo {
-                x: self.start.0,
-                y: self.start.1,
-            },
-            Edge::CurveTo { x1, y1, .. } => Edge::CurveTo {
-                x1,
-                y1,
-                x2: self.start.0,
-                y2: self.start.1,
-            },
-        };
-        *self.edges.last_mut().unwrap() = edge;
-        std::mem::swap(&mut self.start, &mut self.end);
+        self.points.reverse();
     }
 
     /// Adds an edge to the end of the path segment.
-    fn add_edge(&mut self, edge: Edge) {
-        self.edges.push(edge);
-        self.end = match edge {
-            Edge::LineTo { x, y } => (x, y),
-            Edge::CurveTo { x2, y2, .. } => (x2, y2),
-        };
+    fn add_point(&mut self, point: Point) {
+        self.points.push(point);
+    }
+
+    fn is_empty(&self) -> bool {
+        self.points.len() <= 1
+    }
+
+    fn start(&self) -> (Twips, Twips) {
+        let pt = &self.points.first().unwrap();
+        (pt.x, pt.y)
+    }
+
+    fn end(&self) -> (Twips, Twips) {
+        let pt = &self.points.last().unwrap();
+        (pt.x, pt.y)
     }
 
     /// Attemps to merge another path segment.
     /// One path's start must meet the other path's end.
     /// Returns true if the merge is successful.
     fn try_merge(&mut self, other: &mut PathSegment, directed: bool) -> bool {
-        if other.end == self.start {
-            std::mem::swap(&mut self.edges, &mut other.edges);
-            self.edges.extend_from_slice(&other.edges[..]);
-            self.start = other.start;
+        if other.end() == self.start() {
+            std::mem::swap(&mut self.points, &mut other.points);
+            self.points.extend_from_slice(&other.points[..]);
             true
-        } else if self.end == other.start {
-            self.edges.extend_from_slice(&other.edges[..]);
-            self.end = other.end;
+        } else if self.end() == other.start() {
+            self.points.extend_from_slice(&other.points[..]);
             true
-        } else if !directed && self.end == other.end {
+        } else if !directed && self.end() == other.end() {
             other.flip();
-            self.edges.extend_from_slice(&other.edges[..]);
-            self.end = other.end;
+            self.points.extend_from_slice(&other.points[..]);
             true
-        } else if !directed && self.start == other.start {
+        } else if !directed && self.start() == other.start() {
             other.flip();
-            std::mem::swap(&mut self.edges, &mut other.edges);
-            self.edges.extend_from_slice(&other.edges[..]);
-            self.start = other.start;
+            std::mem::swap(&mut self.points, &mut other.points);
+            self.points.extend_from_slice(&other.points[..]);
             true
         } else {
             false
@@ -199,13 +162,14 @@ impl PendingPath {
     }
 
     fn merge_path(&mut self, mut new_segment: PathSegment, directed: bool) {
-        if !new_segment.edges.is_empty() {
-            while let Some(i) = self.segments.iter_mut().position(|segment| segment.try_merge(&mut new_segment, directed)) {
+        if !new_segment.is_empty() {
+            if let Some(i) = self.segments.iter_mut().position(|segment| segment.try_merge(&mut new_segment, directed)) {
                 new_segment = self.segments.swap_remove(i);
+                self.merge_path(new_segment, directed);
+            } else {
+                // Couldn't merge the segment any further to an existing segment. Add it to list.
+                self.segments.push(new_segment);
             }
-            
-            // Couldn't merge the segment any further to an existing segment. Add it to list.
-            self.segments.push(new_segment);
         }
     }
 }
@@ -272,8 +236,8 @@ impl ActivePath {
         }
     }
 
-    fn add_edge(&mut self, edge: Edge) {
-        self.segment.add_edge(edge)
+    fn add_point(&mut self, point: Point) {
+        self.segment.add_point(point)
     }
 
     fn flip(&mut self) {
@@ -364,8 +328,11 @@ impl<'a> ShapeConverter<'a> {
                     }
 
                     if let Some(fs) = style_change.fill_style_0 {
-                        if let Some(path) = self.fill_style0.take() {
-                            self.fills.merge_path(path, true);
+                        if let Some(mut path) = self.fill_style0.take() {
+                            if !path.segment.is_empty() {
+                                path.flip();
+                                self.fills.merge_path(path, true);
+                            }
                         }
 
                         self.fill_style0 = if fs != 0 {
@@ -393,12 +360,12 @@ impl<'a> ShapeConverter<'a> {
                 ShapeRecord::StraightEdge { delta_x, delta_y } => {
                     self.x += *delta_x;
                     self.y += *delta_y;
-                    let edge = Edge::LineTo {
+
+                    self.visit_point(Point {
                         x: self.x,
                         y: self.y,
-                    };
-
-                    self.visit_edge(edge);
+                        is_bezier_control: false,
+                    });
                 }
 
                 ShapeRecord::CurvedEdge {
@@ -409,35 +376,46 @@ impl<'a> ShapeConverter<'a> {
                 } => {
                     let x1 = self.x + *control_delta_x;
                     let y1 = self.y + *control_delta_y;
+
+                    self.visit_point(Point {
+                        x: x1,
+                        y: y1,
+                        is_bezier_control: true,
+                    });
+
                     let x2 = x1 + *anchor_delta_x;
                     let y2 = y1 + *anchor_delta_y;
+
+                    self.visit_point(Point {
+                        x: x2,
+                        y: y2,
+                        is_bezier_control: false,
+                    });
+
                     self.x = x2;
                     self.y = y2;
-                    let edge = Edge::CurveTo { x1, y1, x2, y2 };
-
-                    self.visit_edge(edge);
                 }
             }
         }
 
         // Flush any open paths.
         self.flush_layer();
-
+        println!("{:#?}", self.commands);
         self.commands
     }
 
-    /// Adds an edge to the current path for the active fills/strokes.
-    fn visit_edge(&mut self, edge: Edge) {
+    /// Adds a point to the current path for the active fills/strokes.
+    fn visit_point(&mut self, point: Point) {
         if let Some(path) = &mut self.fill_style0 {
-            path.add_edge(edge)
+            path.add_point(point)
         }
 
         if let Some(path) = &mut self.fill_style1 {
-            path.add_edge(edge)
+            path.add_point(point)
         }
 
         if let Some(path) = &mut self.line_style {
-            path.add_edge(edge)
+            path.add_point(point)
         }
     }
 
@@ -450,8 +428,8 @@ impl<'a> ShapeConverter<'a> {
         }
 
         if let Some(mut path) = self.fill_style0.take() {
-            if !path.segment.edges.is_empty() {
-                self.fill_style0 = Some(ActivePath::new(path.style_id, (self.x, self.y)));
+            self.fill_style0 = Some(ActivePath::new(path.style_id, (self.x, self.y)));
+            if !path.segment.is_empty() {
                 path.flip();
                 self.fills.merge_path(path, true);
             }
@@ -489,17 +467,24 @@ impl<'a> ShapeConverter<'a> {
             let mut commands = vec![];
             if !path.segments.is_empty() {
                 for segment in path.segments {
+                    if segment.is_empty() {
+                        continue;
+                    }
+
+                    let mut points = segment.points.into_iter();
+                    let start = points.next().unwrap();
                     commands.push(DrawCommand::MoveTo {
-                        x: segment.start.0,
-                        y: segment.start.1,
+                        x: start.x,
+                        y: start.y,
                     });
-                    for edge in segment.edges {
-                        commands.push(match edge {
-                            Edge::LineTo { x, y } => DrawCommand::LineTo { x, y },
-                            Edge::CurveTo { x1, y1, x2, y2 } => {
-                                DrawCommand::CurveTo { x1, y1, x2, y2 }
-                            }
-                        });
+                    while let Some(point) = points.next() {
+                        let command = if point.is_bezier_control {
+                            let point2 = points.next().unwrap();
+                            DrawCommand::CurveTo { x1: point.x, y1: point.y, x2: point2.x, y2: point2.y }
+                        } else {
+                            DrawCommand::LineTo { x: point.x, y: point.y }
+                        };
+                        commands.push(command);
                     }
                 }
             }
@@ -511,17 +496,24 @@ impl<'a> ShapeConverter<'a> {
             let mut commands = vec![];
             if !path.segments.is_empty() {
                 for segment in path.segments {
+                    if segment.is_empty() {
+                        continue;
+                    }
+
+                    let mut points = segment.points.into_iter();
+                    let start = points.next().unwrap();
                     commands.push(DrawCommand::MoveTo {
-                        x: segment.start.0,
-                        y: segment.start.1,
+                        x: start.x,
+                        y: start.y,
                     });
-                    for edge in segment.edges {
-                        commands.push(match edge {
-                            Edge::LineTo { x, y } => DrawCommand::LineTo { x, y },
-                            Edge::CurveTo { x1, y1, x2, y2 } => {
-                                DrawCommand::CurveTo { x1, y1, x2, y2 }
-                            }
-                        });
+                    while let Some(point) = points.next() {
+                        let command = if point.is_bezier_control {
+                            let point2 = points.next().unwrap();
+                            DrawCommand::CurveTo { x1: point.x, y1: point.y, x2: point2.x, y2: point2.y }
+                        } else {
+                            DrawCommand::LineTo { x: point.x, y: point.y }
+                        };
+                        commands.push(command);
                     }
                 }
                 self.commands.push(DrawPath::Stroke { style, commands });
