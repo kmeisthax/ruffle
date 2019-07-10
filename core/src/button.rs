@@ -2,17 +2,15 @@ use crate::display_object::{DisplayObject, DisplayObjectBase, DisplayObjectImpl}
 use crate::matrix::Matrix;
 use crate::player::{RenderContext, UpdateContext};
 use crate::prelude::*;
-use gc::{Gc, GcCell};
 use std::collections::BTreeMap;
 
-#[derive(Clone, Trace, Finalize)]
+#[derive(Clone)]
 pub struct Button {
     base: DisplayObjectBase,
 
-    #[unsafe_ignore_trace]
     state: ButtonState,
 
-    children: [BTreeMap<Depth, Gc<GcCell<DisplayObject>>>; 4],
+    children: [BTreeMap<Depth, Box<DisplayObject>>; 4],
     release_actions: Vec<u8>,
 }
 
@@ -29,7 +27,7 @@ impl Button {
             let mut child = library.instantiate_display_object(record.id).unwrap();
             child.set_matrix(&record.matrix.clone().into());
             child.set_color_transform(&record.color_transform.clone().into());
-            let child_ptr = Gc::new(GcCell::new(DisplayObject::new(Box::new(child))));
+            let child_ptr = Box::new(DisplayObject::new(Box::new(child)));
             for state in &record.states {
                 let i = match state {
                     ButtonState::Up => 0,
@@ -62,7 +60,7 @@ impl Button {
     fn children_in_state(
         &self,
         state: ButtonState,
-    ) -> impl Iterator<Item = &Gc<GcCell<DisplayObject>>> {
+    ) -> impl Iterator<Item = &Box<DisplayObject>> {
         let i = match state {
             ButtonState::Up => 0,
             ButtonState::Over => 1,
@@ -74,7 +72,7 @@ impl Button {
     fn children_in_state_mut(
         &mut self,
         state: ButtonState,
-    ) -> impl Iterator<Item = &mut Gc<GcCell<DisplayObject>>> {
+    ) -> impl Iterator<Item = &mut Box<DisplayObject>> {
         let i = match state {
             ButtonState::Up => 0,
             ButtonState::Over => 1,
@@ -108,14 +106,14 @@ impl DisplayObjectImpl for Button {
                 ButtonState::Over
             };
         }
-        for child in self.children_in_state(self.state) {
-            child.borrow_mut().run_frame(context);
+        for child in self.children_in_state_mut(self.state) {
+            child.run_frame(context);
         }
     }
 
     fn run_post_frame(&mut self, context: &mut UpdateContext) {
-        for child in self.children_in_state(self.state) {
-            child.borrow_mut().run_post_frame(context);
+        for child in self.children_in_state_mut(self.state) {
+            child.run_post_frame(context);
         }
     }
 
@@ -123,7 +121,7 @@ impl DisplayObjectImpl for Button {
         context.transform_stack.push(self.transform());
 
         for child in self.children_in_state(self.state) {
-            child.borrow().render(context);
+            child.render(context);
         }
         context.transform_stack.pop();
     }

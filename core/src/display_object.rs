@@ -1,14 +1,11 @@
 use crate::player::{RenderContext, UpdateContext};
 use crate::prelude::*;
 use crate::transform::Transform;
-use gc::{Gc, GcCell, Trace};
 use std::collections::VecDeque;
 
-#[derive(Clone, Trace, Finalize)]
+#[derive(Clone)]
 pub struct DisplayObjectBase {
-    #[unsafe_ignore_trace]
     depth: Depth,
-    #[unsafe_ignore_trace]
     transform: Transform,
     name: String,
     clip_depth: Depth,
@@ -59,7 +56,7 @@ impl DisplayObjectImpl for DisplayObjectBase {
     }
 }
 
-pub trait DisplayObjectImpl: Trace {
+pub trait DisplayObjectImpl {
     fn transform(&self) -> &Transform;
     fn get_matrix(&self) -> &Matrix;
     fn set_matrix(&mut self, matrix: &Matrix);
@@ -76,7 +73,7 @@ pub trait DisplayObjectImpl: Trace {
     fn render(&self, _context: &mut RenderContext) {}
 
     fn handle_click(&mut self, _pos: (f32, f32)) {}
-    fn visit_children(&self, queue: &mut VecDeque<Gc<GcCell<DisplayObject>>>) {}
+    fn visit_children(&self, queue: &mut VecDeque<Box<DisplayObject>>) {}
     fn as_movie_clip(&self) -> Option<&crate::movie_clip::MovieClip> {
         None
     }
@@ -139,7 +136,7 @@ macro_rules! impl_display_object {
 // Revisit this eventually, some possibilities:
 // - Just use a dumb enum.
 // - Some DST magic if we remove the Box below and mark this !Sized?
-#[derive(Clone, Trace, Finalize)]
+#[derive(Clone)]
 pub struct DisplayObject {
     inner: Box<DisplayObjectImpl>,
 }
@@ -173,7 +170,7 @@ impl DisplayObjectImpl for DisplayObject {
         self.inner.handle_click(pos)
     }
 
-    fn visit_children(&self, queue: &mut VecDeque<Gc<GcCell<DisplayObject>>>) {
+    fn visit_children(&self, queue: &mut VecDeque<Box<DisplayObject>>) {
         self.inner.visit_children(queue);
     }
 
@@ -195,34 +192,34 @@ impl DisplayObjectImpl for DisplayObject {
 }
 
 pub struct DisplayObjectVisitor {
-    pub open: VecDeque<Gc<GcCell<DisplayObject>>>,
+    pub open: VecDeque<Box<DisplayObject>>,
 }
 
 impl DisplayObjectVisitor {
     pub fn run(&mut self, context: &mut crate::player::UpdateContext) {
         let root = self.open[0].clone();
-        while let Some(node) = self.open.pop_front() {
+        while let Some(mut node) = self.open.pop_front() {
             // {
             //     let mut node = node.borrow_mut();
             //     node.run_frame(context);
             // }
-            let mut action = None;
-            if let Some(clip) = node.borrow().as_movie_clip() {
-                action = clip.action();
-            }
-            if let Some((pos, len)) = action {
-                let mut action_context = crate::avm1::ActionContext {
-                    global_time: context.global_time,
-                    start_clip: node.clone(),
-                    active_clip: node.clone(),
-                    root: root.clone(),
-                    audio: context.audio,
-                };
-                let data = &context.tag_stream.get_ref().get_ref()[pos..pos + len];
-                if let Err(e) = context.avm1.do_action(&mut action_context, &data[..]) {}
-            }
-            node.borrow_mut().run_post_frame(context);
-            node.borrow().visit_children(&mut self.open);
+            // let mut action = None;
+            // if let Some(clip) = node.as_movie_clip() {
+            //     action = clip.action();
+            // }
+            // if let Some((pos, len)) = action {
+            //     let mut action_context = crate::avm1::ActionContext {
+            //         global_time: context.global_time,
+            //         start_clip: node.clone(),
+            //         active_clip: node.clone(),
+            //         root: root.clone(),
+            //         audio: context.audio,
+            //     };
+            //     let data = &context.tag_stream.get_ref().get_ref()[pos..pos + len];
+            //     if let Err(e) = context.avm1.do_action(&mut action_context, &data[..]) {}
+            // }
+            node.run_post_frame(context);
+            node.visit_children(&mut self.open);
         }
     }
 }

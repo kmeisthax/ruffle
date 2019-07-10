@@ -5,10 +5,9 @@ use crate::matrix::Matrix;
 use crate::player::{RenderContext, UpdateContext};
 use crate::transform::Transform;
 
-#[derive(Clone, Trace, Finalize)]
+#[derive(Clone)]
 pub struct Text {
     base: DisplayObjectBase,
-    #[unsafe_ignore_trace]
     text_blocks: Vec<swf::TextRecord>,
 }
 

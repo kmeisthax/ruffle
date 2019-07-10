@@ -4,11 +4,10 @@ use crate::display_object::{DisplayObjectBase, DisplayObjectImpl};
 use crate::matrix::Matrix;
 use crate::player::{RenderContext, UpdateContext};
 
-#[derive(Clone, Trace, Finalize)]
+#[derive(Clone)]
 pub struct Graphic {
     base: DisplayObjectBase,
 
-    #[unsafe_ignore_trace]
     shape_handle: ShapeHandle,
 }
 

@@ -6,7 +6,6 @@ use crate::library::Library;
 use crate::movie_clip::MovieClip;
 use crate::prelude::*;
 use crate::transform::TransformStack;
-use gc::{Gc, GcCell};
 use log::info;
 use std::io::Cursor;
 
@@ -15,14 +14,14 @@ type CharacterId = swf::CharacterId;
 pub struct Player {
     tag_stream: swf::read::Reader<Cursor<Vec<u8>>>,
 
-    avm: Avm1,
+    //avm: Avm1,
 
     audio: Audio,
     renderer: Box<RenderBackend>,
     transform_stack: TransformStack,
 
     library: Library,
-    stage: Gc<GcCell<DisplayObject>>,
+    stage: Box<DisplayObject>,
     background_color: Color,
 
     frame_rate: f64,
@@ -58,7 +57,7 @@ impl Player {
         let mut player = Player {
             tag_stream,
 
-            avm: Avm1::new(header.version),
+            // avm: Avm1::new(header.version),
 
             renderer,
             audio: Audio::new(audio),
@@ -72,7 +71,7 @@ impl Player {
             transform_stack: TransformStack::new(),
 
             library: Library::new(),
-            stage: Gc::new(GcCell::new(stage)),
+            stage: Box::new(stage),
 
             frame_rate: header.frame_rate.into(),
             frame_accumulator: 0.0,
@@ -120,7 +119,7 @@ impl Player {
     pub fn mouse_down(&mut self) {}
 
     pub fn mouse_up(&mut self) {
-        self.stage.borrow_mut().handle_click(self.mouse_pos);
+        self.stage.handle_click(self.mouse_pos);
     }
 }
 
@@ -133,14 +132,13 @@ impl Player {
             position_stack: vec![],
             library: &mut self.library,
             background_color: &mut self.background_color,
-            avm1: &mut self.avm,
+            //avm1: &mut self.avm,
             renderer: &mut *self.renderer,
             audio: &mut self.audio,
             action: None,
         };
 
-        let mut stage = self.stage.borrow_mut();
-        stage.preload(&mut update_context);
+        self.stage.preload(&mut update_context);
     }
 
     fn run_frame(&mut self) {
@@ -151,13 +149,13 @@ impl Player {
             position_stack: vec![],
             library: &mut self.library,
             background_color: &mut self.background_color,
-            avm1: &mut self.avm,
+            //avm1: &mut self.avm,
             renderer: &mut *self.renderer,
             audio: &mut self.audio,
             action: None,
         };
 
-        self.stage.borrow_mut().run_frame(&mut update_context);
+        self.stage.run_frame(&mut update_context);
         {
             let mut queue = std::collections::VecDeque::new();
             queue.push_back(self.stage.clone());
@@ -178,8 +176,7 @@ impl Player {
                 library: &self.library,
                 transform_stack: &mut self.transform_stack,
             };
-            let stage = self.stage.borrow_mut();
-            stage.render(&mut render_context);
+            self.stage.render(&mut render_context);
         }
 
         self.renderer.end_frame();
@@ -193,7 +190,7 @@ pub struct UpdateContext<'a> {
     pub position_stack: Vec<u64>,
     pub library: &'a mut Library,
     pub background_color: &'a mut Color,
-    pub avm1: &'a mut Avm1,
+    //pub avm1: &'a mut Avm1,
     pub renderer: &'a mut RenderBackend,
     pub audio: &'a mut Audio,
     pub action: Option<(usize, usize)>,

@@ -7,17 +7,14 @@ use crate::prelude::*;
 use std::collections::HashMap;
 use swf::Twips;
 
-#[derive(Clone, Trace, Finalize)]
+#[derive(Clone)]
 pub struct MorphShape {
     base: DisplayObjectBase,
 
-    #[unsafe_ignore_trace]
     start: swf::MorphShape,
 
-    #[unsafe_ignore_trace]
     end: swf::MorphShape,
 
-    #[unsafe_ignore_trace]
     frames: HashMap<u16, ShapeHandle>,
 
     ratio: u16,

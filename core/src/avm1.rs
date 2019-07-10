@@ -1,5 +1,4 @@
 use crate::display_object::{DisplayObject, DisplayObjectImpl};
-use gc::{Gc, GcCell};
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 use std::collections::HashMap;
 use std::io::Cursor;
@@ -7,9 +6,9 @@ use swf::avm1::read::Reader;
 
 pub struct ActionContext<'a> {
     pub global_time: u64,
-    pub root: Gc<GcCell<DisplayObject>>,
-    pub start_clip: Gc<GcCell<DisplayObject>>,
-    pub active_clip: Gc<GcCell<DisplayObject>>,
+    pub root: Box<DisplayObject>,
+    pub start_clip: Box<DisplayObject>,
+    pub active_clip: Box<DisplayObject>,
     pub audio: &'a mut crate::audio::Audio,
 }
 
@@ -157,31 +156,32 @@ impl Avm1 {
     }
 
     pub fn resolve_slash_path<'a>(
-        start: &'a Gc<GcCell<DisplayObject>>,
-        root: &'a Gc<GcCell<DisplayObject>>,
+        start: &'a Box<DisplayObject>,
+        root: &'a Box<DisplayObject>,
         mut path: &str,
-    ) -> Option<Gc<GcCell<crate::display_object::DisplayObject>>> {
-        let mut cur_clip = if path.bytes().nth(0).unwrap_or(0) == b'/' {
-            path = &path[1..];
-            root.clone()
-        } else {
-            start.clone()
-        };
-        if !path.is_empty() {
-            for name in path.split('/') {
-                let next_clip = if let Some(clip) = cur_clip.borrow().as_movie_clip() {
-                    if let Some(child) = clip.get_child_by_name(name) {
-                        child.clone()
-                    } else {
-                        return None;
-                    }
-                } else {
-                    return None;
-                };
-                cur_clip = next_clip;
-            }
-        }
-        Some(cur_clip)
+    ) -> Option<Box<crate::display_object::DisplayObject>> {
+        // let mut cur_clip = if path.bytes().nth(0).unwrap_or(0) == b'/' {
+        //     path = &path[1..];
+        //     root.clone()
+        // } else {
+        //     start.clone()
+        // };
+        // if !path.is_empty() {
+        //     for name in path.split('/') {
+        //         let next_clip = if let Some(clip) = cur_clip.borrow().as_movie_clip() {
+        //             if let Some(child) = clip.get_child_by_name(name) {
+        //                 child.clone()
+        //             } else {
+        //                 return None;
+        //             }
+        //         } else {
+        //             return None;
+        //         };
+        //         cur_clip = next_clip;
+        //     }
+        // }
+        // Some(cur_clip)
+        None
     }
 
     fn push(&mut self, value: impl Into<Value>) {
@@ -440,29 +440,29 @@ impl Avm1 {
     }
 
     fn action_get_property(&mut self, context: &mut ActionContext) -> Result<(), Error> {
-        let prop_index = self.pop()?.as_u32()? as usize;
-        let clip_path = self.pop()?.as_string()?;
-        let ret = if let Some(clip) =
-            Avm1::resolve_slash_path(&context.active_clip, &context.root, &clip_path)
-        {
-            if let Some(clip) = clip.borrow().as_movie_clip() {
-                match prop_index {
-                    0 => Value::Number(f64::from(clip.x())),
-                    1 => Value::Number(f64::from(clip.y())),
-                    2 => Value::Number(f64::from(clip.x_scale())),
-                    3 => Value::Number(f64::from(clip.y_scale())),
-                    4 => Value::Number(f64::from(clip.current_frame())),
-                    5 => Value::Number(f64::from(clip.total_frames())),
-                    12 => Value::Number(f64::from(clip.frames_loaded())),
-                    _ => unimplemented!(),
-                }
-            } else {
-                Value::Undefined
-            }
-        } else {
-            Value::Undefined
-        };
-        self.push(ret);
+        // let prop_index = self.pop()?.as_u32()? as usize;
+        // let clip_path = self.pop()?.as_string()?;
+        // let ret = if let Some(clip) =
+        //     Avm1::resolve_slash_path(&context.active_clip, &context.root, &clip_path)
+        // {
+        //     if let Some(clip) = clip.borrow().as_movie_clip() {
+        //         match prop_index {
+        //             0 => Value::Number(f64::from(clip.x())),
+        //             1 => Value::Number(f64::from(clip.y())),
+        //             2 => Value::Number(f64::from(clip.x_scale())),
+        //             3 => Value::Number(f64::from(clip.y_scale())),
+        //             4 => Value::Number(f64::from(clip.current_frame())),
+        //             5 => Value::Number(f64::from(clip.total_frames())),
+        //             12 => Value::Number(f64::from(clip.frames_loaded())),
+        //             _ => unimplemented!(),
+        //         }
+        //     } else {
+        //         Value::Undefined
+        //     }
+        // } else {
+        //     Value::Undefined
+        // };
+        // self.push(ret);
         Ok(())
     }
 
@@ -497,13 +497,13 @@ impl Avm1 {
     }
 
     fn action_goto_frame(&mut self, context: &mut ActionContext, frame: u16) -> Result<(), Error> {
-        let mut display_object = context.active_clip.borrow_mut();
-        let mut clip = display_object.as_movie_clip_mut().unwrap();
-        if clip.playing() {
-            clip.goto_frame(frame + 1, false);
-        } else {
-            clip.goto_frame(frame + 1, true);
-        }
+        // let mut display_object = context.active_clip.borrow_mut();
+        // let mut clip = display_object.as_movie_clip_mut().unwrap();
+        // if clip.playing() {
+        //     clip.goto_frame(frame + 1, false);
+        // } else {
+        //     clip.goto_frame(frame + 1, true);
+        // }
         Ok(())
     }
 
@@ -516,25 +516,25 @@ impl Avm1 {
         // Version 4+ gotoAndPlay/gotoAndStop
         // Param can either be a frame number or a frame label.
         // TODO(Herschel): Slash notation
-        let mut display_object = context.active_clip.borrow_mut();
-        let mut clip = display_object.as_movie_clip_mut().unwrap();
-        match self.pop()? {
-            Value::Number(frame) => {
-                clip.goto_frame(scene_offset + (frame as u16) + 1, !set_playing)
-            }
-            Value::String(frame_label) => {
-                //if let Some(frame) = clip.frame_label_to_number(&frame_label, context) {
-                //  clip.goto_frame(scene_offset + frame, !set_playing)
-                //}
-            }
-            _ => return Err("Expected frame number or label".into()),
-        }
+        // let mut display_object = context.active_clip.borrow_mut();
+        // let mut clip = display_object.as_movie_clip_mut().unwrap();
+        // match self.pop()? {
+        //     Value::Number(frame) => {
+        //         clip.goto_frame(scene_offset + (frame as u16) + 1, !set_playing)
+        //     }
+        //     Value::String(frame_label) => {
+        //         //if let Some(frame) = clip.frame_label_to_number(&frame_label, context) {
+        //         //  clip.goto_frame(scene_offset + frame, !set_playing)
+        //         //}
+        //     }
+        //     _ => return Err("Expected frame number or label".into()),
+        // }
         Ok(())
     }
 
     fn action_goto_label(&mut self, context: &mut ActionContext, label: &str) -> Result<(), Error> {
-        let mut display_object = context.active_clip.borrow_mut();
-        let mut clip = display_object.as_movie_clip_mut().unwrap();
+        // let mut display_object = context.active_clip.borrow_mut();
+        // let mut clip = display_object.as_movie_clip_mut().unwrap();
         //if let Some(frame) = clip.frame_label_to_number(label, context) {
         //clip.goto_frame(frame !set_playing)
         //}
@@ -679,9 +679,9 @@ impl Avm1 {
     }
 
     fn action_next_frame(&mut self, context: &mut ActionContext) -> Result<(), Error> {
-        let mut display_object = context.active_clip.borrow_mut();
-        let mut clip = display_object.as_movie_clip_mut().unwrap();
-        clip.next_frame();
+        // let mut display_object = context.active_clip.borrow_mut();
+        // let mut clip = display_object.as_movie_clip_mut().unwrap();
+        // clip.next_frame();
         Ok(())
     }
 
@@ -715,16 +715,16 @@ impl Avm1 {
     }
 
     fn play(&mut self, context: &mut ActionContext) -> Result<(), Error> {
-        let mut display_object = context.active_clip.borrow_mut();
-        let mut clip = display_object.as_movie_clip_mut().unwrap();
-        clip.play();
+        // let mut display_object = context.active_clip.borrow_mut();
+        // let mut clip = display_object.as_movie_clip_mut().unwrap();
+        // clip.play();
         Ok(())
     }
 
     fn prev_frame(&mut self, context: &mut ActionContext) -> Result<(), Error> {
-        let mut display_object = context.active_clip.borrow_mut();
-        let mut clip = display_object.as_movie_clip_mut().unwrap();
-        clip.prev_frame();
+        // let mut display_object = context.active_clip.borrow_mut();
+        // let mut clip = display_object.as_movie_clip_mut().unwrap();
+        // clip.prev_frame();
         Ok(())
     }
 
@@ -820,9 +820,9 @@ impl Avm1 {
     }
 
     fn action_stop(&mut self, context: &mut ActionContext) -> Result<(), Error> {
-        let mut display_object = context.active_clip.borrow_mut();
-        let mut clip = display_object.as_movie_clip_mut().unwrap();
-        clip.stop();
+        // let mut display_object = context.active_clip.borrow_mut();
+        // let mut clip = display_object.as_movie_clip_mut().unwrap();
+        // clip.stop();
         Ok(())
     }
 

@@ -9,7 +9,6 @@ use crate::morph_shape::MorphShape;
 use crate::player::{RenderContext, UpdateContext};
 use crate::prelude::*;
 use crate::text::Text;
-use gc::{Gc, GcCell};
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use swf::read::SwfRead;
@@ -17,7 +16,7 @@ use swf::read::SwfRead;
 type Depth = i16;
 type FrameNumber = u16;
 
-#[derive(Clone, Trace, Finalize)]
+#[derive(Clone)]
 pub struct MovieClip {
     base: DisplayObjectBase,
     tag_stream_start: Option<u64>,
@@ -28,11 +27,10 @@ pub struct MovieClip {
     current_frame: FrameNumber,
     total_frames: FrameNumber,
 
-    #[unsafe_ignore_trace]
     audio_stream: Option<AudioStreamHandle>,
     stream_started: bool,
 
-    children: BTreeMap<Depth, Gc<GcCell<DisplayObject>>>,
+    children: BTreeMap<Depth, Box<DisplayObject>>,
 }
 
 impl MovieClip {
@@ -131,10 +129,8 @@ impl MovieClip {
         self.total_frames
     }
 
-    pub fn get_child_by_name(&self, name: &str) -> Option<&Gc<GcCell<DisplayObject>>> {
-        self.children
-            .values()
-            .find(|child| child.borrow().name() == name)
+    pub fn get_child_by_name(&self, name: &str) -> Option<&Box<DisplayObject>> {
+        self.children.values().find(|child| child.name() == name)
     }
 
     pub fn frame_label_to_number(
@@ -206,26 +202,26 @@ impl MovieClip {
                 // TODO(Herschel): Behavior when character doesn't exist/isn't a DisplayObject?
                 let character =
                     if let Ok(character) = context.library.instantiate_display_object(id) {
-                        Gc::new(GcCell::new(character))
+                        Box::new(character)
                     } else {
                         return;
                     };
 
                 // TODO(Herschel): Behavior when depth is occupied? (I think it replaces)
-                self.children.insert(place_object.depth, character.clone());
-                character
+                self.children.insert(place_object.depth, character);
+                self.children.get_mut(&place_object.depth).unwrap()
             }
             PlaceObjectAction::Modify => {
-                if let Some(child) = self.children.get(&place_object.depth) {
-                    child.clone()
+                if let Some(child) = self.children.get_mut(&place_object.depth) {
+                    child
                 } else {
                     return;
                 }
             }
             PlaceObjectAction::Replace(id) => {
-                let character =
+                let mut character =
                     if let Ok(character) = context.library.instantiate_display_object(id) {
-                        Gc::new(GcCell::new(character))
+                        Box::new(character)
                     } else {
                         return;
                     };
@@ -233,18 +229,13 @@ impl MovieClip {
                 if let Some(prev_character) =
                     self.children.insert(place_object.depth, character.clone())
                 {
-                    character
-                        .borrow_mut()
-                        .set_matrix(prev_character.borrow().get_matrix());
-                    character
-                        .borrow_mut()
-                        .set_color_transform(prev_character.borrow().get_color_transform());
+                    character.set_matrix(prev_character.get_matrix());
+                    character.set_color_transform(prev_character.get_color_transform());
                 }
-                character
+                self.children.get_mut(&place_object.depth).unwrap()
             }
         };
 
-        let mut character = character.borrow_mut();
         if let Some(matrix) = &place_object.matrix {
             let m = matrix.clone();
             character.set_matrix(&Matrix::from(m));
@@ -592,8 +583,8 @@ impl DisplayObjectImpl for MovieClip {
 
         // TODO(Herschel): Verify order of execution for parent/children.
         // Parent first? Children first? Sorted by depth?
-        for child in self.children.values() {
-            child.borrow_mut().run_frame(context);
+        for child in self.children.values_mut() {
+            child.run_frame(context);
         }
 
         if self.tag_stream_start.is_some() {
@@ -616,7 +607,7 @@ impl DisplayObjectImpl for MovieClip {
         context.transform_stack.push(self.transform());
 
         for child in self.children.values() {
-            child.borrow_mut().render(context);
+            child.render(context);
         }
 
         context.transform_stack.pop();
@@ -624,11 +615,11 @@ impl DisplayObjectImpl for MovieClip {
 
     fn handle_click(&mut self, pos: (f32, f32)) {
         for child in self.children.values_mut() {
-            child.borrow_mut().handle_click(pos);
+            child.handle_click(pos);
         }
     }
 
-    fn visit_children(&self, queue: &mut VecDeque<Gc<GcCell<DisplayObject>>>) {
+    fn visit_children(&self, queue: &mut VecDeque<Box<DisplayObject>>) {
         for child in self.children.values() {
             queue.push_back(child.clone());
         }
