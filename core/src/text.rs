@@ -1,6 +1,6 @@
 use crate::backend::render::ShapeHandle;
 use crate::color_transform::ColorTransform;
-use crate::display_object::{DisplayObjectBase, DisplayObjectImpl};
+use crate::display_object::{DisplayObjectBase, DisplayObject};
 use crate::matrix::Matrix;
 use crate::player::{RenderContext, UpdateContext};
 use crate::transform::Transform;
@@ -20,7 +20,7 @@ impl Text {
     }
 }
 
-impl DisplayObjectImpl for Text {
+impl DisplayObject for Text {
     impl_display_object!(base);
 
     fn run_frame(&mut self, _context: &mut UpdateContext) {

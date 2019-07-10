@@ -1,7 +1,7 @@
 use crate::backend::audio::SoundHandle;
 use crate::button::Button;
 use crate::character::Character;
-use crate::display_object::{DisplayObject, DisplayObjectImpl};
+use crate::display_object::DisplayObject;
 use crate::font::Font;
 use crate::graphic::Graphic;
 use crate::movie_clip::MovieClip;
@@ -42,8 +42,8 @@ impl Library {
     pub fn instantiate_display_object(
         &self,
         id: CharacterId,
-    ) -> Result<DisplayObject, Box<std::error::Error>> {
-        let obj: Box<DisplayObjectImpl> = match self.characters.get(&id) {
+    ) -> Result<Box<DisplayObject>, Box<std::error::Error>> {
+        let obj: Box<DisplayObject> = match self.characters.get(&id) {
             Some(Character::Graphic(graphic)) => graphic.clone(),
             Some(Character::MorphShape(morph_shape)) => morph_shape.clone(),
             Some(Character::MovieClip(movie_clip)) => movie_clip.clone(),
@@ -52,7 +52,7 @@ impl Library {
             Some(_) => return Err("Not a DisplayObject".into()),
             None => return Err("Character id doesn't exist".into()),
         };
-        Ok(DisplayObject::new(obj))
+        Ok(obj)
     }
 
     pub fn get_font(&self, id: CharacterId) -> Option<&Font> {

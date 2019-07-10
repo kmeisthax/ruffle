@@ -1,4 +1,4 @@
-use crate::display_object::{DisplayObject, DisplayObjectBase, DisplayObjectImpl};
+use crate::display_object::{DisplayObject, DisplayObjectBase};
 use crate::matrix::Matrix;
 use crate::player::{RenderContext, UpdateContext};
 use crate::prelude::*;
@@ -27,7 +27,6 @@ impl Button {
             let mut child = library.instantiate_display_object(record.id).unwrap();
             child.set_matrix(&record.matrix.clone().into());
             child.set_color_transform(&record.color_transform.clone().into());
-            let child_ptr = Box::new(DisplayObject::new(Box::new(child)));
             for state in &record.states {
                 let i = match state {
                     ButtonState::Up => 0,
@@ -35,7 +34,7 @@ impl Button {
                     ButtonState::Down => 2,
                     ButtonState::HitTest => continue,
                 };
-                children[i].insert(record.depth, child_ptr.clone());
+                children[i].insert(record.depth, child.clone());
             }
         }
 
@@ -82,7 +81,7 @@ impl Button {
     }
 }
 
-impl DisplayObjectImpl for Button {
+impl DisplayObject for Button {
     impl_display_object!(base);
 
     fn run_frame(&mut self, context: &mut UpdateContext) {

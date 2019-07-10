@@ -22,7 +22,7 @@ impl Default for DisplayObjectBase {
     }
 }
 
-impl DisplayObjectImpl for DisplayObjectBase {
+impl DisplayObject for DisplayObjectBase {
     fn transform(&self) -> &Transform {
         &self.transform
     }
@@ -51,12 +51,12 @@ impl DisplayObjectImpl for DisplayObjectBase {
     fn set_clip_depth(&mut self, depth: Depth) {
         self.clip_depth = depth;
     }
-    fn box_clone(&self) -> Box<DisplayObjectImpl> {
+    fn box_clone(&self) -> Box<DisplayObject> {
         Box::new(self.clone())
     }
 }
 
-pub trait DisplayObjectImpl {
+pub trait DisplayObject {
     fn transform(&self) -> &Transform;
     fn get_matrix(&self) -> &Matrix;
     fn set_matrix(&mut self, matrix: &Matrix);
@@ -86,11 +86,11 @@ pub trait DisplayObjectImpl {
     fn as_morph_shape_mut(&mut self) -> Option<&mut crate::morph_shape::MorphShape> {
         None
     }
-    fn box_clone(&self) -> Box<DisplayObjectImpl>;
+    fn box_clone(&self) -> Box<DisplayObject>;
 }
 
-impl Clone for Box<DisplayObjectImpl> {
-    fn clone(&self) -> Box<DisplayObjectImpl> {
+impl Clone for Box<DisplayObject> {
+    fn clone(&self) -> Box<DisplayObject> {
         self.box_clone()
     }
 }
@@ -124,71 +124,10 @@ macro_rules! impl_display_object {
         fn set_clip_depth(&mut self, depth: $crate::prelude::Depth) {
             self.$field.set_clip_depth(depth)
         }
-        fn box_clone(&self) -> Box<$crate::display_object::DisplayObjectImpl> {
+        fn box_clone(&self) -> Box<$crate::display_object::DisplayObject> {
             Box::new(self.clone())
         }
     };
-}
-
-// TODO(Herschel): We wrap in a box because using a trait object
-// directly with Cc gets hairy.
-// Extra heap allocation, though.
-// Revisit this eventually, some possibilities:
-// - Just use a dumb enum.
-// - Some DST magic if we remove the Box below and mark this !Sized?
-#[derive(Clone)]
-pub struct DisplayObject {
-    inner: Box<DisplayObjectImpl>,
-}
-
-impl DisplayObject {
-    pub fn new(inner: Box<DisplayObjectImpl>) -> DisplayObject {
-        DisplayObject { inner }
-    }
-}
-
-impl DisplayObjectImpl for DisplayObject {
-    impl_display_object!(inner);
-
-    fn preload(&mut self, context: &mut UpdateContext) {
-        self.inner.preload(context);
-    }
-
-    fn run_frame(&mut self, context: &mut UpdateContext) {
-        self.inner.run_frame(context)
-    }
-
-    fn run_post_frame(&mut self, context: &mut UpdateContext) {
-        self.inner.run_post_frame(context)
-    }
-
-    fn render(&self, context: &mut RenderContext) {
-        self.inner.render(context)
-    }
-
-    fn handle_click(&mut self, pos: (f32, f32)) {
-        self.inner.handle_click(pos)
-    }
-
-    fn visit_children(&self, queue: &mut VecDeque<Box<DisplayObject>>) {
-        self.inner.visit_children(queue);
-    }
-
-    fn as_movie_clip(&self) -> Option<&crate::movie_clip::MovieClip> {
-        self.inner.as_movie_clip()
-    }
-
-    fn as_movie_clip_mut(&mut self) -> Option<&mut crate::movie_clip::MovieClip> {
-        self.inner.as_movie_clip_mut()
-    }
-
-    fn as_morph_shape(&self) -> Option<&crate::morph_shape::MorphShape> {
-        self.inner.as_morph_shape()
-    }
-
-    fn as_morph_shape_mut(&mut self) -> Option<&mut crate::morph_shape::MorphShape> {
-        self.inner.as_morph_shape_mut()
-    }
 }
 
 pub struct DisplayObjectVisitor {

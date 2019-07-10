@@ -1,7 +1,7 @@
 use crate::audio::AudioStreamHandle;
 use crate::character::Character;
 use crate::color_transform::ColorTransform;
-use crate::display_object::{DisplayObject, DisplayObjectBase, DisplayObjectImpl};
+use crate::display_object::{DisplayObject, DisplayObjectBase};
 use crate::font::Font;
 use crate::graphic::Graphic;
 use crate::matrix::Matrix;
@@ -30,7 +30,7 @@ pub struct MovieClip {
     audio_stream: Option<AudioStreamHandle>,
     stream_started: bool,
 
-    children: BTreeMap<Depth, Box<DisplayObject>>,
+    children: BTreeMap<Depth, Box<dyn DisplayObject>>,
 }
 
 impl MovieClip {
@@ -202,7 +202,7 @@ impl MovieClip {
                 // TODO(Herschel): Behavior when character doesn't exist/isn't a DisplayObject?
                 let character =
                     if let Ok(character) = context.library.instantiate_display_object(id) {
-                        Box::new(character)
+                        character
                     } else {
                         return;
                     };
@@ -221,18 +221,18 @@ impl MovieClip {
             PlaceObjectAction::Replace(id) => {
                 let mut character =
                     if let Ok(character) = context.library.instantiate_display_object(id) {
-                        Box::new(character)
+                        character
                     } else {
                         return;
                     };
 
-                if let Some(prev_character) =
-                    self.children.insert(place_object.depth, character.clone())
-                {
+                let prev_character = self.children.insert(place_object.depth, character);
+                let character = self.children.get_mut(&place_object.depth).unwrap();
+                if let Some(prev_character) = prev_character {
                     character.set_matrix(prev_character.get_matrix());
                     character.set_color_transform(prev_character.get_color_transform());
                 }
-                self.children.get_mut(&place_object.depth).unwrap()
+                character
             }
         };
 
@@ -384,7 +384,7 @@ impl MovieClip {
     }
 }
 
-impl DisplayObjectImpl for MovieClip {
+impl DisplayObject for MovieClip {
     impl_display_object!(base);
 
     fn preload(&mut self, context: &mut UpdateContext) {

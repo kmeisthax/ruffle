@@ -1,4 +1,4 @@
-use crate::display_object::{DisplayObject, DisplayObjectImpl};
+use crate::display_object::DisplayObject;
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 use std::collections::HashMap;
 use std::io::Cursor;

@@ -1,7 +1,7 @@
 use crate::audio::Audio;
 use crate::avm1::Avm1;
 use crate::backend::{audio::AudioBackend, render::RenderBackend};
-use crate::display_object::{DisplayObject, DisplayObjectImpl};
+use crate::display_object::DisplayObject;
 use crate::library::Library;
 use crate::movie_clip::MovieClip;
 use crate::prelude::*;
@@ -49,7 +49,7 @@ impl Player {
 
         info!("{}x{}", header.stage_size.x_max, header.stage_size.y_max);
 
-        let stage = DisplayObject::new(Box::new(MovieClip::new_with_data(0, header.num_frames)));
+        let stage = MovieClip::new_with_data(0, header.num_frames);
         let movie_width = (header.stage_size.x_max - header.stage_size.x_min).to_pixels() as u32;
         let movie_height = (header.stage_size.y_max - header.stage_size.y_min).to_pixels() as u32;
         renderer.set_dimensions(movie_width, movie_height);

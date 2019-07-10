@@ -1,6 +1,6 @@
 use crate::backend::render::{RenderBackend, ShapeHandle};
 use crate::color_transform::ColorTransform;
-use crate::display_object::{DisplayObjectBase, DisplayObjectImpl};
+use crate::display_object::{DisplayObjectBase, DisplayObject};
 use crate::matrix::Matrix;
 use crate::player::{RenderContext, UpdateContext};
 use crate::prelude::*;
@@ -304,7 +304,7 @@ impl MorphShape {
     }
 }
 
-impl DisplayObjectImpl for MorphShape {
+impl DisplayObject for MorphShape {
     impl_display_object!(base);
 
     fn as_morph_shape(&self) -> Option<&crate::morph_shape::MorphShape> {
