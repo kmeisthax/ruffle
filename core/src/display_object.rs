@@ -56,7 +56,7 @@ impl DisplayObject for DisplayObjectBase {
     }
 }
 
-pub trait DisplayObject {
+pub trait DisplayObject: std::any::Any {
     fn transform(&self) -> &Transform;
     fn get_matrix(&self) -> &Matrix;
     fn set_matrix(&mut self, matrix: &Matrix);
@@ -128,37 +128,4 @@ macro_rules! impl_display_object {
             Box::new(self.clone())
         }
     };
-}
-
-pub struct DisplayObjectVisitor {
-    pub open: VecDeque<Box<DisplayObject>>,
-}
-
-impl DisplayObjectVisitor {
-    pub fn run(&mut self, context: &mut crate::player::UpdateContext) {
-        let root = self.open[0].clone();
-        while let Some(mut node) = self.open.pop_front() {
-            // {
-            //     let mut node = node.borrow_mut();
-            //     node.run_frame(context);
-            // }
-            // let mut action = None;
-            // if let Some(clip) = node.as_movie_clip() {
-            //     action = clip.action();
-            // }
-            // if let Some((pos, len)) = action {
-            //     let mut action_context = crate::avm1::ActionContext {
-            //         global_time: context.global_time,
-            //         start_clip: node.clone(),
-            //         active_clip: node.clone(),
-            //         root: root.clone(),
-            //         audio: context.audio,
-            //     };
-            //     let data = &context.tag_stream.get_ref().get_ref()[pos..pos + len];
-            //     if let Err(e) = context.avm1.do_action(&mut action_context, &data[..]) {}
-            // }
-            node.run_post_frame(context);
-            node.visit_children(&mut self.open);
-        }
-    }
 }

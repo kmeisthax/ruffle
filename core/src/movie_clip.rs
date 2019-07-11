@@ -618,13 +618,7 @@ impl DisplayObject for MovieClip {
             child.handle_click(pos);
         }
     }
-
-    fn visit_children(&self, queue: &mut VecDeque<Box<DisplayObject>>) {
-        for child in self.children.values() {
-            queue.push_back(child.clone());
-        }
-    }
-
+    
     fn as_movie_clip(&self) -> Option<&crate::movie_clip::MovieClip> {
         Some(self)
     }

@@ -15,7 +15,6 @@ pub struct Player {
     tag_stream: swf::read::Reader<Cursor<Vec<u8>>>,
 
     //avm: Avm1,
-
     audio: Audio,
     renderer: Box<RenderBackend>,
     transform_stack: TransformStack,
@@ -41,7 +40,6 @@ impl Player {
         swf_data: Vec<u8>,
     ) -> Result<Player, Box<std::error::Error>> {
         let (header, mut reader) = swf::read::read_swf_header(&swf_data[..]).unwrap();
-        
         // Decompress the entire SWF in memory.
         let mut data = Vec::new();
         reader.get_mut().read_to_end(&mut data)?;
@@ -58,7 +56,6 @@ impl Player {
             tag_stream,
 
             // avm: Avm1::new(header.version),
-
             renderer,
             audio: Audio::new(audio),
 
@@ -156,13 +153,7 @@ impl Player {
         };
 
         self.stage.run_frame(&mut update_context);
-        {
-            let mut queue = std::collections::VecDeque::new();
-            queue.push_back(self.stage.clone());
-            let mut visitor = crate::display_object::DisplayObjectVisitor { open: queue };
-            visitor.run(&mut update_context);
-        }
-        //self.stage.borrow_mut().run_post_frame(&mut update_context);
+        self.stage.run_post_frame(&mut update_context)
     }
 
     fn render(&mut self) {
