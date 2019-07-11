@@ -118,9 +118,7 @@ impl Player {
     pub fn mouse_up(&mut self) {
         self.stage.handle_click(self.mouse_pos);
     }
-}
 
-impl Player {
     fn preload(&mut self) {
         let mut update_context = UpdateContext {
             global_time: self.global_time,
