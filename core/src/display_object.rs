@@ -22,7 +22,7 @@ impl Default for DisplayObjectBase {
     }
 }
 
-impl DisplayObject for DisplayObjectBase {
+impl<'a> DisplayObject<'a> for DisplayObjectBase {
     fn transform(&self) -> &Transform {
         &self.transform
     }
@@ -51,12 +51,12 @@ impl DisplayObject for DisplayObjectBase {
     fn set_clip_depth(&mut self, depth: Depth) {
         self.clip_depth = depth;
     }
-    fn box_clone(&self) -> Box<DisplayObject> {
+    fn box_clone(&self) -> Box<DisplayObject<'a>> {
         Box::new(self.clone())
     }
 }
 
-pub trait DisplayObject: std::any::Any {
+pub trait DisplayObject<'a>: 'a {
     fn transform(&self) -> &Transform;
     fn get_matrix(&self) -> &Matrix;
     fn set_matrix(&mut self, matrix: &Matrix);
@@ -67,17 +67,16 @@ pub trait DisplayObject: std::any::Any {
     fn clip_depth(&self) -> Depth;
     fn set_clip_depth(&mut self, depth: Depth);
 
-    fn preload(&mut self, _context: &mut UpdateContext) {}
-    fn run_frame(&mut self, _context: &mut UpdateContext) {}
-    fn run_post_frame(&mut self, _context: &mut UpdateContext) {}
-    fn render(&self, _context: &mut RenderContext) {}
+    fn preload(&mut self, _context: &mut UpdateContext<'_, 'a>) {}
+    fn run_frame(&mut self, _context: &mut UpdateContext<'_, 'a>) {}
+    fn run_post_frame(&mut self, _context: &mut UpdateContext<'_, 'a>) {}
+    fn render(&self, _context: &mut RenderContext<'_, 'a>) {}
 
     fn handle_click(&mut self, _pos: (f32, f32)) {}
-    fn visit_children(&self, queue: &mut VecDeque<Box<DisplayObject>>) {}
-    fn as_movie_clip(&self) -> Option<&crate::movie_clip::MovieClip> {
+    fn as_movie_clip(&self) -> Option<&crate::movie_clip::MovieClip<'a>> {
         None
     }
-    fn as_movie_clip_mut(&mut self) -> Option<&mut crate::movie_clip::MovieClip> {
+    fn as_movie_clip_mut(&mut self) -> Option<&mut crate::movie_clip::MovieClip<'a>> {
         None
     }
     fn as_morph_shape(&self) -> Option<&crate::morph_shape::MorphShape> {
@@ -86,11 +85,11 @@ pub trait DisplayObject: std::any::Any {
     fn as_morph_shape_mut(&mut self) -> Option<&mut crate::morph_shape::MorphShape> {
         None
     }
-    fn box_clone(&self) -> Box<DisplayObject>;
+    fn box_clone(&self) -> Box<DisplayObject<'a>>;
 }
 
-impl Clone for Box<DisplayObject> {
-    fn clone(&self) -> Box<DisplayObject> {
+impl<'a> Clone for Box<DisplayObject<'a>> {
+    fn clone(&self) -> Box<DisplayObject<'a>> {
         self.box_clone()
     }
 }
@@ -124,7 +123,7 @@ macro_rules! impl_display_object {
         fn set_clip_depth(&mut self, depth: $crate::prelude::Depth) {
             self.$field.set_clip_depth(depth)
         }
-        fn box_clone(&self) -> Box<$crate::display_object::DisplayObject> {
+        fn box_clone(&self) -> Box<$crate::display_object::DisplayObject<'a>> {
             Box::new(self.clone())
         }
     };

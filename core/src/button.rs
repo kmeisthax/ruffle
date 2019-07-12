@@ -5,17 +5,17 @@ use crate::prelude::*;
 use std::collections::BTreeMap;
 
 #[derive(Clone)]
-pub struct Button {
+pub struct Button<'a> {
     base: DisplayObjectBase,
 
     state: ButtonState,
 
-    children: [BTreeMap<Depth, Box<DisplayObject>>; 4],
+    children: [BTreeMap<Depth, Box<dyn DisplayObject<'a>>>; 4],
     release_actions: Vec<u8>,
 }
 
-impl Button {
-    pub fn from_swf_tag(button: &swf::Button, library: &crate::library::Library) -> Button {
+impl<'a> Button<'a> {
+    pub fn from_swf_tag(button: &swf::Button, library: &crate::library::Library<'a>) -> Self {
         use swf::ButtonState;
         let mut children = [
             BTreeMap::new(),
@@ -59,7 +59,7 @@ impl Button {
     fn children_in_state(
         &self,
         state: ButtonState,
-    ) -> impl Iterator<Item = &Box<DisplayObject>> {
+    ) -> impl Iterator<Item = &Box<DisplayObject<'a>>> {
         let i = match state {
             ButtonState::Up => 0,
             ButtonState::Over => 1,
@@ -71,7 +71,7 @@ impl Button {
     fn children_in_state_mut(
         &mut self,
         state: ButtonState,
-    ) -> impl Iterator<Item = &mut Box<DisplayObject>> {
+    ) -> impl Iterator<Item = &mut Box<DisplayObject<'a>>> {
         let i = match state {
             ButtonState::Up => 0,
             ButtonState::Over => 1,
@@ -81,10 +81,10 @@ impl Button {
     }
 }
 
-impl DisplayObject for Button {
+impl<'a> DisplayObject<'a> for Button<'a> {
     impl_display_object!(base);
 
-    fn run_frame(&mut self, context: &mut UpdateContext) {
+    fn run_frame(&mut self, context: &mut UpdateContext<'_, 'a>) {
         if self.state == ButtonState::Down {
             // let mut action_context = crate::avm1::ActionContext {
             //     global_time: context.global_time,
@@ -110,13 +110,13 @@ impl DisplayObject for Button {
         }
     }
 
-    fn run_post_frame(&mut self, context: &mut UpdateContext) {
+    fn run_post_frame(&mut self, context: &mut UpdateContext<'_, 'a>) {
         for child in self.children_in_state_mut(self.state) {
             child.run_post_frame(context);
         }
     }
 
-    fn render(&self, context: &mut RenderContext) {
+    fn render(&self, context: &mut RenderContext<'_, 'a>) {
         context.transform_stack.push(self.transform());
 
         for child in self.children_in_state(self.state) {

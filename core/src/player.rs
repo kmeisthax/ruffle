@@ -1,5 +1,5 @@
 use crate::audio::Audio;
-use crate::avm1::Avm1;
+//use crate::avm1::Avm1;
 use crate::backend::{audio::AudioBackend, render::RenderBackend};
 use crate::display_object::DisplayObject;
 use crate::library::Library;
@@ -11,7 +11,7 @@ use std::io::Cursor;
 
 type CharacterId = swf::CharacterId;
 
-pub struct Player {
+pub struct Player<'a> {
     tag_stream: swf::read::Reader<Cursor<Vec<u8>>>,
 
     //avm: Avm1,
@@ -19,8 +19,8 @@ pub struct Player {
     renderer: Box<RenderBackend>,
     transform_stack: TransformStack,
 
-    library: Library,
-    stage: Box<DisplayObject>,
+    library: Library<'a>,
+    stage: Box<DisplayObject<'a>>,
     background_color: Color,
 
     frame_rate: f64,
@@ -33,12 +33,12 @@ pub struct Player {
     mouse_pos: (f32, f32),
 }
 
-impl Player {
+impl<'a> Player<'a> {
     pub fn new(
         mut renderer: Box<RenderBackend>,
         audio: Box<AudioBackend>,
         swf_data: Vec<u8>,
-    ) -> Result<Player, Box<std::error::Error>> {
+    ) -> Result<Self, Box<std::error::Error>> {
         let (header, mut reader) = swf::read::read_swf_header(&swf_data[..]).unwrap();
         // Decompress the entire SWF in memory.
         let mut data = Vec::new();
@@ -172,12 +172,12 @@ impl Player {
     }
 }
 
-pub struct UpdateContext<'a> {
+pub struct UpdateContext<'a, 'lib> {
     pub global_time: u64,
     pub mouse_pos: (f32, f32),
     pub tag_stream: &'a mut swf::read::Reader<Cursor<Vec<u8>>>,
     pub position_stack: Vec<u64>,
-    pub library: &'a mut Library,
+    pub library: &'a mut Library<'lib>,
     pub background_color: &'a mut Color,
     //pub avm1: &'a mut Avm1,
     pub renderer: &'a mut RenderBackend,
@@ -185,8 +185,8 @@ pub struct UpdateContext<'a> {
     pub action: Option<(usize, usize)>,
 }
 
-pub struct RenderContext<'a> {
+pub struct RenderContext<'a, 'lib> {
     pub renderer: &'a mut RenderBackend,
-    pub library: &'a Library,
+    pub library: &'a Library<'lib>,
     pub transform_stack: &'a mut TransformStack,
 }

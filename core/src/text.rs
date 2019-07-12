@@ -20,7 +20,7 @@ impl Text {
     }
 }
 
-impl DisplayObject for Text {
+impl<'a> DisplayObject<'a> for Text {
     impl_display_object!(base);
 
     fn run_frame(&mut self, _context: &mut UpdateContext) {

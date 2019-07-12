@@ -17,10 +17,11 @@ type Depth = i16;
 type FrameNumber = u16;
 
 #[derive(Clone)]
-pub struct MovieClip {
+pub struct MovieClip<'a> {
     base: DisplayObjectBase,
     tag_stream_start: Option<u64>,
     tag_stream_pos: u64,
+    tag_data: &'a [u8],
     is_playing: bool,
     action: Option<(usize, usize)>,
     goto_queue: VecDeque<FrameNumber>,
@@ -30,15 +31,16 @@ pub struct MovieClip {
     audio_stream: Option<AudioStreamHandle>,
     stream_started: bool,
 
-    children: BTreeMap<Depth, Box<dyn DisplayObject>>,
+    children: BTreeMap<Depth, Box<dyn DisplayObject<'a>>>,
 }
 
-impl MovieClip {
-    pub fn new() -> MovieClip {
-        MovieClip {
+impl<'a> MovieClip<'a> {
+    pub fn new() -> Self {
+        Self {
             base: Default::default(),
             tag_stream_start: None,
             tag_stream_pos: 0,
+            tag_data: &[],
             is_playing: true,
             action: None,
             goto_queue: VecDeque::new(),
@@ -50,11 +52,12 @@ impl MovieClip {
         }
     }
 
-    pub fn new_with_data(tag_stream_start: u64, num_frames: u16) -> MovieClip {
-        MovieClip {
+    pub fn new_with_data(tag_stream_start: u64, num_frames: u16) -> Self {
+        Self {
             base: Default::default(),
             tag_stream_start: Some(tag_stream_start),
             tag_stream_pos: tag_stream_start,
+            tag_data: &[],
             is_playing: true,
             action: None,
             goto_queue: VecDeque::new(),
@@ -129,7 +132,7 @@ impl MovieClip {
         self.total_frames
     }
 
-    pub fn get_child_by_name(&self, name: &str) -> Option<&Box<DisplayObject>> {
+    pub fn get_child_by_name(&self, name: &str) -> Option<&Box<DisplayObject<'a>>> {
         self.children.values().find(|child| child.name() == name)
     }
 
@@ -166,7 +169,7 @@ impl MovieClip {
         self.action
     }
 
-    pub fn run_goto_queue(&mut self, context: &mut UpdateContext) {
+    pub fn run_goto_queue(&mut self, context: &mut UpdateContext<'_, 'a>) {
         let mut i = 0;
         while i < self.goto_queue.len() {
             let frame = self.goto_queue[i];
@@ -195,7 +198,7 @@ impl MovieClip {
         self.goto_queue.clear();
     }
 
-    pub fn place_object(&mut self, place_object: &swf::PlaceObject, context: &mut UpdateContext) {
+    pub fn place_object(&mut self, place_object: &swf::PlaceObject, context: &mut UpdateContext<'_, 'a>) {
         use swf::PlaceObjectAction;
         let character = match place_object.action {
             PlaceObjectAction::Place(id) => {
@@ -260,7 +263,7 @@ impl MovieClip {
         }
     }
 
-    fn run_frame_internal(&mut self, context: &mut UpdateContext, only_display_actions: bool) {
+    fn run_frame_internal(&mut self, context: &mut UpdateContext<'_, 'a>, only_display_actions: bool) {
         use swf::Tag;
 
         // Advance frame number.
@@ -384,7 +387,7 @@ impl MovieClip {
     }
 }
 
-impl DisplayObject for MovieClip {
+impl<'a> DisplayObject<'a> for MovieClip<'a> {
     impl_display_object!(base);
 
     fn preload(&mut self, context: &mut UpdateContext) {
@@ -569,7 +572,7 @@ impl DisplayObject for MovieClip {
         }
     }
 
-    fn run_frame(&mut self, context: &mut UpdateContext) {
+    fn run_frame(&mut self, context: &mut UpdateContext<'_, 'a>) {
         self.action = None;
         if self.tag_stream_start.is_some() {
             context
@@ -595,7 +598,7 @@ impl DisplayObject for MovieClip {
         }
     }
 
-    fn run_post_frame(&mut self, context: &mut UpdateContext) {
+    fn run_post_frame(&mut self, context: &mut UpdateContext<'_, 'a>) {
         self.run_goto_queue(context);
 
         //for child in self.children.values() {
@@ -603,7 +606,7 @@ impl DisplayObject for MovieClip {
         //}
     }
 
-    fn render(&self, context: &mut RenderContext) {
+    fn render(&self, context: &mut RenderContext<'_, 'a>) {
         context.transform_stack.push(self.transform());
 
         for child in self.children.values() {
@@ -618,12 +621,11 @@ impl DisplayObject for MovieClip {
             child.handle_click(pos);
         }
     }
-    
-    fn as_movie_clip(&self) -> Option<&crate::movie_clip::MovieClip> {
+    fn as_movie_clip(&self) -> Option<&crate::movie_clip::MovieClip<'a>> {
         Some(self)
     }
 
-    fn as_movie_clip_mut(&mut self) -> Option<&mut crate::movie_clip::MovieClip> {
+    fn as_movie_clip_mut(&mut self) -> Option<&mut crate::movie_clip::MovieClip<'a>> {
         Some(self)
     }
 }

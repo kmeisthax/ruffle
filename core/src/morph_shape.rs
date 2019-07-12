@@ -304,7 +304,7 @@ impl MorphShape {
     }
 }
 
-impl DisplayObject for MorphShape {
+impl<'a> DisplayObject<'a> for MorphShape {
     impl_display_object!(base);
 
     fn as_morph_shape(&self) -> Option<&crate::morph_shape::MorphShape> {

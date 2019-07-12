@@ -21,7 +21,7 @@ impl Graphic {
     }
 }
 
-impl DisplayObject for Graphic {
+impl<'a> DisplayObject<'a> for Graphic {
     impl_display_object!(base);
 
     fn run_frame(&mut self, _context: &mut UpdateContext) {
