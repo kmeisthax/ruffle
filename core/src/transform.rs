@@ -1,9 +1,11 @@
 use crate::prelude::*;
+use gc_arena::Collect;
 
 /// Represents the transform for a DisplayObject.
 /// This includes both the transformation matrix and the color transform.
 ///
-#[derive(Clone)]
+#[derive(Clone, Collect)]
+#[collect(require_static)]
 pub struct Transform {
     pub matrix: Matrix,
     pub color_transform: ColorTransform,

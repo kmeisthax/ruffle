@@ -21,7 +21,7 @@ impl Graphic {
     }
 }
 
-impl<'a> DisplayObject<'a> for Graphic {
+impl<'gc> DisplayObject<'gc> for Graphic {
     impl_display_object!(base);
 
     fn run_frame(&mut self, _context: &mut UpdateContext) {
@@ -36,5 +36,12 @@ impl<'a> DisplayObject<'a> for Graphic {
             .render_shape(self.shape_handle, context.transform_stack.transform());
 
         context.transform_stack.pop();
+    }
+}
+
+unsafe impl<'gc> gc_arena::Collect for Graphic {
+    #[inline]
+    fn needs_trace() -> bool {
+        false
     }
 }

@@ -4,6 +4,7 @@ use crate::display_object::{DisplayObjectBase, DisplayObject};
 use crate::matrix::Matrix;
 use crate::player::{RenderContext, UpdateContext};
 use crate::prelude::*;
+use gc_arena::{Collect, CollectionContext};
 use std::collections::HashMap;
 use swf::Twips;
 
@@ -304,7 +305,7 @@ impl MorphShape {
     }
 }
 
-impl<'a> DisplayObject<'a> for MorphShape {
+impl<'gc> DisplayObject<'gc> for MorphShape {
     impl_display_object!(base);
 
     fn as_morph_shape(&self) -> Option<&crate::morph_shape::MorphShape> {
@@ -333,5 +334,12 @@ impl<'a> DisplayObject<'a> for MorphShape {
         }
 
         context.transform_stack.pop();
+    }
+}
+
+unsafe impl<'gc> Collect for MorphShape {
+    #[inline]
+    fn needs_trace() -> bool {
+        false
     }
 }

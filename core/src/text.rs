@@ -20,7 +20,7 @@ impl Text {
     }
 }
 
-impl<'a> DisplayObject<'a> for Text {
+impl<'gc> DisplayObject<'gc> for Text {
     impl_display_object!(base);
 
     fn run_frame(&mut self, _context: &mut UpdateContext) {
@@ -70,5 +70,12 @@ impl<'a> DisplayObject<'a> for Text {
             }
         }
         context.transform_stack.pop();
+    }
+}
+
+unsafe impl<'gc> gc_arena::Collect for Text {
+    #[inline]
+    fn needs_trace() -> bool {
+        false
     }
 }

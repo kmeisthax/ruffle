@@ -6,12 +6,22 @@ use crate::library::Library;
 use crate::movie_clip::MovieClip;
 use crate::prelude::*;
 use crate::transform::TransformStack;
+use gc_arena::{make_arena, ArenaParameters, Collect, Gc, GcCell, MutationContext};
 use log::info;
 use std::io::Cursor;
 
 type CharacterId = swf::CharacterId;
 
-pub struct Player<'a> {
+#[derive(Collect)]
+#[collect(empty_drop)]
+struct GcRoot<'gc> {
+    library: Gc<'gc, GcCell<'gc, Library<'gc>>>,
+    root: Gc<'gc, GcCell<'gc, MovieClip<'gc>>>,
+}
+
+make_arena!(GcArena, GcRoot);
+
+pub struct Player<'gc> {
     tag_stream: swf::read::Reader<Cursor<Vec<u8>>>,
 
     //avm: Avm1,
@@ -19,8 +29,8 @@ pub struct Player<'a> {
     renderer: Box<RenderBackend>,
     transform_stack: TransformStack,
 
-    library: Library<'a>,
-    stage: Box<DisplayObject<'a>>,
+    library: Library<'gc>,
+    gc_arena: GcArena,
     background_color: Color,
 
     frame_rate: f64,
@@ -33,7 +43,7 @@ pub struct Player<'a> {
     mouse_pos: (f32, f32),
 }
 
-impl<'a> Player<'a> {
+impl<'gc> Player<'gc> {
     pub fn new(
         mut renderer: Box<RenderBackend>,
         audio: Box<AudioBackend>,
@@ -47,7 +57,6 @@ impl<'a> Player<'a> {
 
         info!("{}x{}", header.stage_size.x_max, header.stage_size.y_max);
 
-        let stage = MovieClip::new_with_data(0, header.num_frames);
         let movie_width = (header.stage_size.x_max - header.stage_size.x_min).to_pixels() as u32;
         let movie_height = (header.stage_size.y_max - header.stage_size.y_min).to_pixels() as u32;
         renderer.set_dimensions(movie_width, movie_height);
@@ -68,7 +77,10 @@ impl<'a> Player<'a> {
             transform_stack: TransformStack::new(),
 
             library: Library::new(),
-            stage: Box::new(stage),
+            gc_arena: GcArena::new(ArenaParameters::default(), |gc_context| GcRoot {
+                library: Gc::allocate(gc_context, GcCell::allocate(gc_context, Library::new())),
+                root: Gc::allocate(gc_context, GcCell::allocate(gc_context, MovieClip::new_with_data(0, header.num_frames))),
+            }),
 
             frame_rate: header.frame_rate.into(),
             frame_accumulator: 0.0,
@@ -116,42 +128,52 @@ impl<'a> Player<'a> {
     pub fn mouse_down(&mut self) {}
 
     pub fn mouse_up(&mut self) {
-        self.stage.handle_click(self.mouse_pos);
+        //self.stage.handle_click(self.mouse_pos);
     }
 
     fn preload(&mut self) {
-        let mut update_context = UpdateContext {
-            global_time: self.global_time,
-            mouse_pos: self.mouse_pos,
-            tag_stream: &mut self.tag_stream,
-            position_stack: vec![],
-            library: &mut self.library,
-            background_color: &mut self.background_color,
-            //avm1: &mut self.avm,
-            renderer: &mut *self.renderer,
-            audio: &mut self.audio,
-            action: None,
-        };
+        let (global_time, mouse_pos, tag_stream, background_color, renderer, audio) = (self.global_time, self.mouse_pos, &mut self.tag_stream, &mut self.background_color, &mut *self.renderer, &mut self.audio);
 
-        self.stage.preload(&mut update_context);
+        self.gc_arena.mutate(|gc_context, gc_root| {
+            let mut update_context = UpdateContext {
+                global_time,
+                mouse_pos,
+                tag_stream,
+                position_stack: vec![],
+                library: gc_root.library.write(gc_context),
+                background_color,
+                //avm1: &mut self.avm,
+                renderer,
+                audio,
+                action: None,
+                gc_context,
+            };
+
+            gc_root.root.write(gc_context).preload(&mut update_context);
+        });
     }
 
     fn run_frame(&mut self) {
-        let mut update_context = UpdateContext {
-            global_time: self.global_time,
-            mouse_pos: self.mouse_pos,
-            tag_stream: &mut self.tag_stream,
-            position_stack: vec![],
-            library: &mut self.library,
-            background_color: &mut self.background_color,
-            //avm1: &mut self.avm,
-            renderer: &mut *self.renderer,
-            audio: &mut self.audio,
-            action: None,
-        };
+        let (global_time, mouse_pos, tag_stream, background_color, renderer, audio) = (self.global_time, self.mouse_pos, &mut self.tag_stream, &mut self.background_color, &mut *self.renderer, &mut self.audio);
 
-        self.stage.run_frame(&mut update_context);
-        self.stage.run_post_frame(&mut update_context)
+        self.gc_arena.mutate(|gc_context, gc_root| {
+            let mut update_context = UpdateContext {
+                global_time,
+                mouse_pos,
+                tag_stream,
+                position_stack: vec![],
+                library: gc_root.library.write(gc_context),
+                background_color,
+                //avm1: &mut self.avm,
+                renderer,
+                audio,
+                action: None,
+                gc_context,
+            };
+
+            gc_root.root.write(gc_context).run_frame(&mut update_context);
+            gc_root.root.write(gc_context).run_post_frame(&mut update_context)
+        });
     }
 
     fn render(&mut self) {
@@ -159,25 +181,27 @@ impl<'a> Player<'a> {
 
         self.renderer.clear(self.background_color.clone());
 
-        {
+        let (renderer, transform_stack) = (&mut *self.renderer, &mut self.transform_stack);
+        self.gc_arena.mutate(|gc_context, gc_root| {
             let mut render_context = RenderContext {
-                renderer: &mut *self.renderer,
-                library: &self.library,
-                transform_stack: &mut self.transform_stack,
+                renderer,
+                library: gc_root.library.read(),
+                transform_stack,
             };
-            self.stage.render(&mut render_context);
-        }
+            gc_root.root.read().render(&mut render_context);
+        });
 
         self.renderer.end_frame();
     }
 }
 
-pub struct UpdateContext<'a, 'lib> {
+pub struct UpdateContext<'a, 'gc, 'gc_context> {
     pub global_time: u64,
     pub mouse_pos: (f32, f32),
     pub tag_stream: &'a mut swf::read::Reader<Cursor<Vec<u8>>>,
     pub position_stack: Vec<u64>,
-    pub library: &'a mut Library<'lib>,
+    pub library: std::cell::RefMut<'a, Library<'gc>>,
+    pub gc_context: MutationContext<'gc, 'gc_context>,
     pub background_color: &'a mut Color,
     //pub avm1: &'a mut Avm1,
     pub renderer: &'a mut RenderBackend,
@@ -185,8 +209,8 @@ pub struct UpdateContext<'a, 'lib> {
     pub action: Option<(usize, usize)>,
 }
 
-pub struct RenderContext<'a, 'lib> {
+pub struct RenderContext<'a, 'gc> {
     pub renderer: &'a mut RenderBackend,
-    pub library: &'a Library<'lib>,
+    pub library: std::cell::Ref<'a, Library<'gc>>,
     pub transform_stack: &'a mut TransformStack,
 }

@@ -6,15 +6,16 @@ use crate::font::Font;
 use crate::graphic::Graphic;
 use crate::movie_clip::MovieClip;
 use crate::prelude::*;
+use gc_arena::{Gc, GcCell, MutationContext};
 use std::collections::HashMap;
 use swf::CharacterId;
 
-pub struct Library<'a> {
-    characters: HashMap<CharacterId, Character<'a>>,
+pub struct Library<'gc> {
+    characters: HashMap<CharacterId, Character<'gc>>,
     jpeg_tables: Option<Vec<u8>>,
 }
 
-impl<'a> Library<'a> {
+impl<'gc> Library<'gc> {
     pub fn new() -> Self {
         Library {
             characters: HashMap::new(),
@@ -22,7 +23,7 @@ impl<'a> Library<'a> {
         }
     }
 
-    pub fn register_character(&mut self, id: CharacterId, character: Character<'a>) {
+    pub fn register_character(&mut self, id: CharacterId, character: Character<'gc>) {
         // TODO(Herschel): What is the behavior if id already exists?
         self.characters.insert(id, character);
     }
@@ -31,19 +32,20 @@ impl<'a> Library<'a> {
         self.characters.contains_key(&id)
     }
 
-    pub fn get_character(&self, id: CharacterId) -> Option<&Character<'a>> {
+    pub fn get_character(&self, id: CharacterId) -> Option<&Character<'gc>> {
         self.characters.get(&id)
     }
 
-    pub fn get_character_mut(&mut self, id: CharacterId) -> Option<&mut Character<'a>> {
+    pub fn get_character_mut(&mut self, id: CharacterId) -> Option<&mut Character<'gc>> {
         self.characters.get_mut(&id)
     }
 
     pub fn instantiate_display_object(
         &self,
         id: CharacterId,
-    ) -> Result<Box<DisplayObject<'a>>, Box<std::error::Error>> {
-        let obj: Box<DisplayObject<'a>> = match self.characters.get(&id) {
+        gc_context: MutationContext<'gc, '_>,
+    ) -> Result<DisplayNode<'gc>, Box<std::error::Error>> {
+        let obj: Box<DisplayObject<'gc>> = match self.characters.get(&id) {
             Some(Character::Graphic(graphic)) => graphic.clone(),
             Some(Character::MorphShape(morph_shape)) => morph_shape.clone(),
             Some(Character::MovieClip(movie_clip)) => movie_clip.clone(),
@@ -52,7 +54,7 @@ impl<'a> Library<'a> {
             Some(_) => return Err("Not a DisplayObject".into()),
             None => return Err("Character id doesn't exist".into()),
         };
-        Ok(obj)
+        Ok(Gc::allocate(gc_context, GcCell::allocate(gc_context, obj)))
     }
 
     pub fn get_font(&self, id: CharacterId) -> Option<&Font> {
@@ -77,5 +79,14 @@ impl<'a> Library<'a> {
 
     pub fn jpeg_tables(&self) -> Option<&[u8]> {
         self.jpeg_tables.as_ref().map(|data| &data[..])
+    }
+}
+
+unsafe impl<'gc> gc_arena::Collect for Library<'gc> {
+    #[inline]
+    fn trace(&self, cc: gc_arena::CollectionContext) {
+        for character in self.characters.values() {
+            character.trace(cc);
+        }
     }
 }

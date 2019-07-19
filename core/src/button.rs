@@ -2,20 +2,21 @@ use crate::display_object::{DisplayObject, DisplayObjectBase};
 use crate::matrix::Matrix;
 use crate::player::{RenderContext, UpdateContext};
 use crate::prelude::*;
+use gc_arena::{Collect, CollectionContext, Gc, GcCell, MutationContext};
 use std::collections::BTreeMap;
 
 #[derive(Clone)]
-pub struct Button<'a> {
+pub struct Button<'gc> {
     base: DisplayObjectBase,
 
     state: ButtonState,
 
-    children: [BTreeMap<Depth, Box<dyn DisplayObject<'a>>>; 4],
+    children: [BTreeMap<Depth, DisplayNode<'gc>>; 4],
     release_actions: Vec<u8>,
 }
 
-impl<'a> Button<'a> {
-    pub fn from_swf_tag(button: &swf::Button, library: &crate::library::Library<'a>) -> Self {
+impl<'gc> Button<'gc> {
+    pub fn from_swf_tag(button: &swf::Button, library: &crate::library::Library<'gc>, gc_context: MutationContext<'gc, '_>) -> Self {
         use swf::ButtonState;
         let mut children = [
             BTreeMap::new(),
@@ -24,9 +25,9 @@ impl<'a> Button<'a> {
             BTreeMap::new(),
         ];
         for record in &button.records {
-            let mut child = library.instantiate_display_object(record.id).unwrap();
-            child.set_matrix(&record.matrix.clone().into());
-            child.set_color_transform(&record.color_transform.clone().into());
+            let mut child = library.instantiate_display_object(record.id, gc_context).unwrap();
+            child.write(gc_context).set_matrix(&record.matrix.clone().into());
+            child.write(gc_context).set_color_transform(&record.color_transform.clone().into());
             for state in &record.states {
                 let i = match state {
                     ButtonState::Up => 0,
@@ -34,7 +35,7 @@ impl<'a> Button<'a> {
                     ButtonState::Down => 2,
                     ButtonState::HitTest => continue,
                 };
-                children[i].insert(record.depth, child.clone());
+                children[i].insert(record.depth, child);
             }
         }
 
@@ -59,7 +60,7 @@ impl<'a> Button<'a> {
     fn children_in_state(
         &self,
         state: ButtonState,
-    ) -> impl Iterator<Item = &Box<DisplayObject<'a>>> {
+    ) -> impl Iterator<Item = &DisplayNode<'gc>> {
         let i = match state {
             ButtonState::Up => 0,
             ButtonState::Over => 1,
@@ -71,7 +72,7 @@ impl<'a> Button<'a> {
     fn children_in_state_mut(
         &mut self,
         state: ButtonState,
-    ) -> impl Iterator<Item = &mut Box<DisplayObject<'a>>> {
+    ) -> impl Iterator<Item = &mut DisplayNode<'gc>> {
         let i = match state {
             ButtonState::Up => 0,
             ButtonState::Over => 1,
@@ -81,10 +82,10 @@ impl<'a> Button<'a> {
     }
 }
 
-impl<'a> DisplayObject<'a> for Button<'a> {
+impl<'gc> DisplayObject<'gc> for Button<'gc> {
     impl_display_object!(base);
 
-    fn run_frame(&mut self, context: &mut UpdateContext<'_, 'a>) {
+    fn run_frame(&mut self, context: &mut UpdateContext<'_, 'gc, '_>) {
         if self.state == ButtonState::Down {
             // let mut action_context = crate::avm1::ActionContext {
             //     global_time: context.global_time,
@@ -106,21 +107,21 @@ impl<'a> DisplayObject<'a> for Button<'a> {
             };
         }
         for child in self.children_in_state_mut(self.state) {
-            child.run_frame(context);
+            child.write(context.gc_context).run_frame(context);
         }
     }
 
-    fn run_post_frame(&mut self, context: &mut UpdateContext<'_, 'a>) {
+    fn run_post_frame(&mut self, context: &mut UpdateContext<'_, 'gc, '_>) {
         for child in self.children_in_state_mut(self.state) {
-            child.run_post_frame(context);
+            child.write(context.gc_context).run_post_frame(context);
         }
     }
 
-    fn render(&self, context: &mut RenderContext<'_, 'a>) {
+    fn render(&self, context: &mut RenderContext<'_, 'gc>) {
         context.transform_stack.push(self.transform());
 
         for child in self.children_in_state(self.state) {
-            child.render(context);
+            child.read().render(context);
         }
         context.transform_stack.pop();
     }
@@ -137,4 +138,15 @@ enum ButtonState {
     Up,
     Over,
     Down,
+}
+
+unsafe impl<'gc> Collect for Button<'gc> {
+    #[inline]
+    fn trace(&self, cc: CollectionContext) {
+        for state in &self.children {
+            for child in state.values() {
+                child.trace(cc);
+            }
+        }
+    }
 }
