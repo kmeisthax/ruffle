@@ -624,9 +624,9 @@ impl<'gc> DisplayObject<'gc> for MovieClip<'gc> {
     fn run_post_frame(&mut self, context: &mut UpdateContext<'_, 'gc, '_>) {
         self.run_goto_queue(context);
 
-        //for child in self.children.values() {
-        //child.borrow_mut().run_post_frame(context);
-        //}
+        for child in self.children.values() {
+            child.write(context.gc_context).run_post_frame(context);
+        }
     }
 
     fn render(&self, context: &mut RenderContext<'_, 'gc>) {

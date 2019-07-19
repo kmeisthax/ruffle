@@ -1,5 +1,5 @@
 use crate::audio::Audio;
-//use crate::avm1::Avm1;
+use crate::avm1::Avm1;
 use crate::backend::{audio::AudioBackend, render::RenderBackend};
 use crate::display_object::DisplayObject;
 use crate::library::Library;
@@ -22,7 +22,7 @@ make_arena!(GcArena, GcRoot);
 pub struct Player {
     tag_stream: swf::read::Reader<Cursor<Vec<u8>>>,
 
-    //avm: Avm1,
+    avm: Avm1,
     audio: Audio,
     renderer: Box<RenderBackend>,
     transform_stack: TransformStack,
@@ -61,7 +61,7 @@ impl Player {
         let mut player = Player {
             tag_stream,
 
-            // avm: Avm1::new(header.version),
+            avm: Avm1::new(header.version),
             renderer,
             audio: Audio::new(audio),
 
@@ -128,13 +128,14 @@ impl Player {
     }
 
     fn preload(&mut self) {
-        let (global_time, mouse_pos, tag_stream, background_color, renderer, audio) = (
+        let (global_time, mouse_pos, tag_stream, background_color, renderer, audio, avm) = (
             self.global_time,
             self.mouse_pos,
             &mut self.tag_stream,
             &mut self.background_color,
             &mut *self.renderer,
             &mut self.audio,
+            &mut self.avm,
         );
 
         self.gc_arena.mutate(|gc_context, gc_root| {
@@ -145,7 +146,7 @@ impl Player {
                 position_stack: vec![],
                 library: gc_root.library.write(gc_context),
                 background_color,
-                //avm1: &mut self.avm,
+                avm,
                 renderer,
                 audio,
                 action: None,
@@ -157,13 +158,14 @@ impl Player {
     }
 
     fn run_frame(&mut self) {
-        let (global_time, mouse_pos, tag_stream, background_color, renderer, audio) = (
+        let (global_time, mouse_pos, tag_stream, background_color, renderer, audio, avm) = (
             self.global_time,
             self.mouse_pos,
             &mut self.tag_stream,
             &mut self.background_color,
             &mut *self.renderer,
             &mut self.audio,
+            &mut self.avm,
         );
 
         self.gc_arena.mutate(|gc_context, gc_root| {
@@ -174,7 +176,7 @@ impl Player {
                 position_stack: vec![],
                 library: gc_root.library.write(gc_context),
                 background_color,
-                //avm1: &mut self.avm,
+                avm,
                 renderer,
                 audio,
                 action: None,
@@ -219,7 +221,7 @@ pub struct UpdateContext<'a, 'gc, 'gc_context> {
     pub library: std::cell::RefMut<'a, Library<'gc>>,
     pub gc_context: MutationContext<'gc, 'gc_context>,
     pub background_color: &'a mut Color,
-    //pub avm1: &'a mut Avm1,
+    pub avm: &'a mut Avm1,
     pub renderer: &'a mut RenderBackend,
     pub audio: &'a mut Audio,
     pub action: Option<(usize, usize)>,
