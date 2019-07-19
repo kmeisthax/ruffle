@@ -13,13 +13,13 @@ thread_local! {
     /// We store the actual instances of the ruffle core in a static pool.
     /// This gives us a clear boundary between the JS side and Rust side, avoiding
     /// issues with lifetimes and type paramters (which cannot be exported with wasm-bindgen).
-    static INSTANCES: RefCell<Arena<RuffleInstance<'static>>> = RefCell::new(Arena::new());
+    static INSTANCES: RefCell<Arena<RuffleInstance>> = RefCell::new(Arena::new());
 }
 
 type AnimationHandler = Closure<FnMut(f64)>;
 
-struct RuffleInstance<'a> {
-    core: ruffle_core::Player<'a>,
+struct RuffleInstance {
+    core: ruffle_core::Player,
     timestamp: f64,
     animation_handler: Option<AnimationHandler>, // requestAnimationFrame callback
     animation_handler_id: Option<NonZeroI32>,    // requestAnimationFrame id

@@ -197,17 +197,23 @@ impl<'gc> MovieClip<'gc> {
         self.goto_queue.clear();
     }
 
-    pub fn place_object(&mut self, place_object: &swf::PlaceObject, context: &mut UpdateContext<'_, 'gc, '_>) {
+    pub fn place_object(
+        &mut self,
+        place_object: &swf::PlaceObject,
+        context: &mut UpdateContext<'_, 'gc, '_>,
+    ) {
         use swf::PlaceObjectAction;
         let character = match place_object.action {
             PlaceObjectAction::Place(id) => {
                 // TODO(Herschel): Behavior when character doesn't exist/isn't a DisplayObject?
-                let character =
-                    if let Ok(character) = context.library.instantiate_display_object(id, context.gc_context) {
-                        character
-                    } else {
-                        return;
-                    };
+                let character = if let Ok(character) = context
+                    .library
+                    .instantiate_display_object(id, context.gc_context)
+                {
+                    character
+                } else {
+                    return;
+                };
 
                 // TODO(Herschel): Behavior when depth is occupied? (I think it replaces)
                 self.children.insert(place_object.depth, character);
@@ -221,18 +227,24 @@ impl<'gc> MovieClip<'gc> {
                 }
             }
             PlaceObjectAction::Replace(id) => {
-                let mut character =
-                    if let Ok(character) = context.library.instantiate_display_object(id, context.gc_context) {
-                        character
-                    } else {
-                        return;
-                    };
+                let mut character = if let Ok(character) = context
+                    .library
+                    .instantiate_display_object(id, context.gc_context)
+                {
+                    character
+                } else {
+                    return;
+                };
 
                 let prev_character = self.children.insert(place_object.depth, character);
                 let character = self.children.get_mut(&place_object.depth).unwrap();
                 if let Some(prev_character) = prev_character {
-                    character.write(context.gc_context).set_matrix(prev_character.read().get_matrix());
-                    character.write(context.gc_context).set_color_transform(prev_character.read().get_color_transform());
+                    character
+                        .write(context.gc_context)
+                        .set_matrix(prev_character.read().get_matrix());
+                    character
+                        .write(context.gc_context)
+                        .set_color_transform(prev_character.read().get_color_transform());
                 }
                 character
             }
@@ -240,11 +252,15 @@ impl<'gc> MovieClip<'gc> {
 
         if let Some(matrix) = &place_object.matrix {
             let m = matrix.clone();
-            character.write(context.gc_context).set_matrix(&Matrix::from(m));
+            character
+                .write(context.gc_context)
+                .set_matrix(&Matrix::from(m));
         }
 
         if let Some(color_transform) = &place_object.color_transform {
-            character.write(context.gc_context).set_color_transform(&ColorTransform::from(color_transform.clone()));
+            character
+                .write(context.gc_context)
+                .set_color_transform(&ColorTransform::from(color_transform.clone()));
         }
 
         if let Some(name) = &place_object.name {
@@ -258,11 +274,17 @@ impl<'gc> MovieClip<'gc> {
         }
 
         if let Some(clip_depth) = &place_object.clip_depth {
-            character.write(context.gc_context).set_clip_depth(*clip_depth);
+            character
+                .write(context.gc_context)
+                .set_clip_depth(*clip_depth);
         }
     }
 
-    fn run_frame_internal(&mut self, context: &mut UpdateContext<'_, 'gc, '_>, only_display_actions: bool) {
+    fn run_frame_internal(
+        &mut self,
+        context: &mut UpdateContext<'_, 'gc, '_>,
+        only_display_actions: bool,
+    ) {
         use swf::Tag;
 
         // Advance frame number.
@@ -403,8 +425,11 @@ impl<'gc> DisplayObject<'gc> for MovieClip<'gc> {
                 // Definition Tags
                 Tag::DefineButton2(swf_button) => {
                     if !context.library.contains_character(swf_button.id) {
-                        let button =
-                            crate::button::Button::from_swf_tag(&swf_button, &context.library, context.gc_context);
+                        let button = crate::button::Button::from_swf_tag(
+                            &swf_button,
+                            &context.library,
+                            context.gc_context,
+                        );
                         context
                             .library
                             .register_character(swf_button.id, Character::Button(Box::new(button)));
@@ -620,7 +645,6 @@ impl<'gc> DisplayObject<'gc> for MovieClip<'gc> {
         //     child.handle_click(pos);
         // }
     }
-    
     fn as_movie_clip(&self) -> Option<&crate::movie_clip::MovieClip<'gc>> {
         Some(self)
     }

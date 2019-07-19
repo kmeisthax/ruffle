@@ -54,7 +54,7 @@ impl<'gc> Library<'gc> {
             Some(_) => return Err("Not a DisplayObject".into()),
             None => return Err("Character id doesn't exist".into()),
         };
-        Ok(Gc::allocate(gc_context, GcCell::allocate(gc_context, obj)))
+        Ok(GcCell::allocate(gc_context, obj))
     }
 
     pub fn get_font(&self, id: CharacterId) -> Option<&Font> {

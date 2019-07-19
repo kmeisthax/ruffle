@@ -15,13 +15,13 @@ type CharacterId = swf::CharacterId;
 #[derive(Collect)]
 #[collect(empty_drop)]
 struct GcRoot<'gc> {
-    library: Gc<'gc, GcCell<'gc, Library<'gc>>>,
-    root: Gc<'gc, GcCell<'gc, MovieClip<'gc>>>,
+    library: GcCell<'gc, Library<'gc>>,
+    root: GcCell<'gc, MovieClip<'gc>>,
 }
 
 make_arena!(GcArena, GcRoot);
 
-pub struct Player<'gc> {
+pub struct Player {
     tag_stream: swf::read::Reader<Cursor<Vec<u8>>>,
 
     //avm: Avm1,
@@ -29,7 +29,6 @@ pub struct Player<'gc> {
     renderer: Box<RenderBackend>,
     transform_stack: TransformStack,
 
-    library: Library<'gc>,
     gc_arena: GcArena,
     background_color: Color,
 
@@ -43,7 +42,7 @@ pub struct Player<'gc> {
     mouse_pos: (f32, f32),
 }
 
-impl<'gc> Player<'gc> {
+impl Player {
     pub fn new(
         mut renderer: Box<RenderBackend>,
         audio: Box<AudioBackend>,
@@ -76,10 +75,9 @@ impl<'gc> Player<'gc> {
             },
             transform_stack: TransformStack::new(),
 
-            library: Library::new(),
             gc_arena: GcArena::new(ArenaParameters::default(), |gc_context| GcRoot {
-                library: Gc::allocate(gc_context, GcCell::allocate(gc_context, Library::new())),
-                root: Gc::allocate(gc_context, GcCell::allocate(gc_context, MovieClip::new_with_data(0, header.num_frames))),
+                library: GcCell::allocate(gc_context, Library::new()),
+                root: GcCell::allocate(gc_context, MovieClip::new_with_data(0, header.num_frames)),
             }),
 
             frame_rate: header.frame_rate.into(),
@@ -132,7 +130,14 @@ impl<'gc> Player<'gc> {
     }
 
     fn preload(&mut self) {
-        let (global_time, mouse_pos, tag_stream, background_color, renderer, audio) = (self.global_time, self.mouse_pos, &mut self.tag_stream, &mut self.background_color, &mut *self.renderer, &mut self.audio);
+        let (global_time, mouse_pos, tag_stream, background_color, renderer, audio) = (
+            self.global_time,
+            self.mouse_pos,
+            &mut self.tag_stream,
+            &mut self.background_color,
+            &mut *self.renderer,
+            &mut self.audio,
+        );
 
         self.gc_arena.mutate(|gc_context, gc_root| {
             let mut update_context = UpdateContext {
@@ -154,7 +159,14 @@ impl<'gc> Player<'gc> {
     }
 
     fn run_frame(&mut self) {
-        let (global_time, mouse_pos, tag_stream, background_color, renderer, audio) = (self.global_time, self.mouse_pos, &mut self.tag_stream, &mut self.background_color, &mut *self.renderer, &mut self.audio);
+        let (global_time, mouse_pos, tag_stream, background_color, renderer, audio) = (
+            self.global_time,
+            self.mouse_pos,
+            &mut self.tag_stream,
+            &mut self.background_color,
+            &mut *self.renderer,
+            &mut self.audio,
+        );
 
         self.gc_arena.mutate(|gc_context, gc_root| {
             let mut update_context = UpdateContext {
@@ -171,8 +183,14 @@ impl<'gc> Player<'gc> {
                 gc_context,
             };
 
-            gc_root.root.write(gc_context).run_frame(&mut update_context);
-            gc_root.root.write(gc_context).run_post_frame(&mut update_context)
+            gc_root
+                .root
+                .write(gc_context)
+                .run_frame(&mut update_context);
+            gc_root
+                .root
+                .write(gc_context)
+                .run_post_frame(&mut update_context)
         });
     }
 

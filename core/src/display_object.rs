@@ -130,3 +130,8 @@ macro_rules! impl_display_object {
         }
     };
 }
+
+/// `DisplayNode` is the garbage-collected pointer between display objects.
+/// TODO(Herschel): The extra Box here is necessary to hold the trait object inside a GC pointer,
+/// but this is an extra allocation... Can we avoid this, maybe with a DST?
+pub type DisplayNode<'gc> = GcCell<'gc, Box<dyn DisplayObject<'gc>>>;
