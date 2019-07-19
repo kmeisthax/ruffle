@@ -1,12 +1,9 @@
 use crate::backend::audio::SoundHandle;
-use crate::button::Button;
 use crate::character::Character;
 use crate::display_object::DisplayObject;
 use crate::font::Font;
-use crate::graphic::Graphic;
-use crate::movie_clip::MovieClip;
 use crate::prelude::*;
-use gc_arena::{Gc, GcCell, MutationContext};
+use gc_arena::{GcCell, MutationContext};
 use std::collections::HashMap;
 use swf::CharacterId;
 
@@ -79,6 +76,12 @@ impl<'gc> Library<'gc> {
 
     pub fn jpeg_tables(&self) -> Option<&[u8]> {
         self.jpeg_tables.as_ref().map(|data| &data[..])
+    }
+}
+
+impl Default for Library<'_> {
+    fn default() -> Self {
+        Library::new()
     }
 }
 

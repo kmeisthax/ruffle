@@ -9,9 +9,7 @@ use crate::morph_shape::MorphShape;
 use crate::player::{RenderContext, UpdateContext};
 use crate::prelude::*;
 use crate::text::Text;
-use gc_arena::{Collect, Gc, GcCell, MutationContext};
-use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap};
 use swf::read::SwfRead;
 
 type Depth = i16;
@@ -72,7 +70,7 @@ impl<'gc> MovieClip<'gc> {
     }
 
     pub fn next_frame(&mut self) {
-        if self.current_frame + 1 <= self.total_frames {
+        if self.current_frame < self.total_frames {
             self.goto_frame(self.current_frame + 1, true);
         }
     }
@@ -130,9 +128,10 @@ impl<'gc> MovieClip<'gc> {
         self.total_frames
     }
 
-    pub fn get_child_by_name(&self, name: &str) -> Option<&DisplayNode> {
-        //self.children.values().find(|child| child.name() == name)
-        None
+    pub fn get_child_by_name(&self, name: &str) -> Option<&DisplayNode<'gc>> {
+        self.children
+            .values()
+            .find(|child| child.read().name() == name)
     }
 
     pub fn frame_label_to_number(
@@ -227,7 +226,7 @@ impl<'gc> MovieClip<'gc> {
                 }
             }
             PlaceObjectAction::Replace(id) => {
-                let mut character = if let Ok(character) = context
+                let character = if let Ok(character) = context
                     .library
                     .instantiate_display_object(id, context.gc_context)
                 {
@@ -331,7 +330,7 @@ impl<'gc> MovieClip<'gc> {
                         self.children.remove(&depth);
                     }
 
-                    Tag::StartSound { id, sound_info } => {
+                    Tag::StartSound { id, .. } => {
                         if let Some(handle) = context.library.get_sound(id) {
                             context.audio.play_sound(handle);
                         }
@@ -364,12 +363,12 @@ impl<'gc> MovieClip<'gc> {
 
     fn sound_stream_head(
         &mut self,
-        stream_info: &swf::SoundStreamInfo,
-        context: &mut UpdateContext,
+        _stream_info: &swf::SoundStreamInfo,
+        _context: &mut UpdateContext,
         _length: usize,
         _version: u8,
     ) {
-        if let Some(stream) = self.audio_stream {
+        if self.audio_stream.is_some() {
             //self.audio_stream = Some(context.audio.register_stream(stream_info));
             self.stream_started = false;
         }
@@ -503,7 +502,7 @@ impl<'gc> DisplayObject<'gc> for MovieClip<'gc> {
                             .register_character(font.id, Character::Font(Box::new(font_object)));
                     }
                 }
-                Tag::DefineFontInfo(info) => {
+                Tag::DefineFontInfo(_) => {
                     // TODO(Herschel)
                 }
                 Tag::DefineMorphShape(swf_shape) => {
@@ -640,7 +639,7 @@ impl<'gc> DisplayObject<'gc> for MovieClip<'gc> {
         context.transform_stack.pop();
     }
 
-    fn handle_click(&mut self, pos: (f32, f32)) {
+    fn handle_click(&mut self, _pos: (f32, f32)) {
         // for child in self.children.values_mut() {
         //     child.handle_click(pos);
         // }
@@ -654,7 +653,13 @@ impl<'gc> DisplayObject<'gc> for MovieClip<'gc> {
     }
 }
 
-unsafe impl<'gc> Collect for MovieClip<'gc> {
+impl Default for MovieClip<'_> {
+    fn default() -> Self {
+        MovieClip::new()
+    }
+}
+
+unsafe impl<'gc> gc_arena::Collect for MovieClip<'gc> {
     #[inline]
     fn trace(&self, cc: gc_arena::CollectionContext) {
         for child in self.children.values() {

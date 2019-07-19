@@ -1,6 +1,5 @@
-use crate::backend::render::ShapeHandle;
 use crate::color_transform::ColorTransform;
-use crate::display_object::{DisplayObjectBase, DisplayObject};
+use crate::display_object::{DisplayObject, DisplayObjectBase};
 use crate::matrix::Matrix;
 use crate::player::{RenderContext, UpdateContext};
 use crate::transform::Transform;

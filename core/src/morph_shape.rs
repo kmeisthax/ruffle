@@ -1,10 +1,9 @@
 use crate::backend::render::{RenderBackend, ShapeHandle};
 use crate::color_transform::ColorTransform;
-use crate::display_object::{DisplayObjectBase, DisplayObject};
+use crate::display_object::{DisplayObject, DisplayObjectBase};
 use crate::matrix::Matrix;
 use crate::player::{RenderContext, UpdateContext};
 use crate::prelude::*;
-use gc_arena::{Collect, CollectionContext};
 use std::collections::HashMap;
 use swf::Twips;
 
@@ -48,7 +47,7 @@ impl MorphShape {
         info!("Registered ratio {}", ratio);
 
         // Interpolate MorphShapes into a Shape.
-        use swf::{Color, FillStyle, Gradient, LineStyle, ShapeRecord, ShapeStyles};
+        use swf::{FillStyle, Gradient, LineStyle, ShapeRecord, ShapeStyles};
         let a = f32::from(ratio) / 65535.0;
         let b = 1.0 - a;
         let fill_styles: Vec<FillStyle> = self
@@ -123,15 +122,14 @@ impl MorphShape {
             .collect();
 
         let mut shape = Vec::with_capacity(self.start.shape.len());
-        let mut start_iter = self.start.shape.iter();
         let mut end_iter = self.end.shape.iter();
-        while let Some(ref start) = start_iter.next() {
+        for start in &self.start.shape {
             match start {
                 &ShapeRecord::StraightEdge { .. } | ShapeRecord::CurvedEdge { .. } => {
                     let end = end_iter.next().unwrap();
                     shape.push(Self::interpolate_edges(&start, &end, a));
                 }
-                &ShapeRecord::StyleChange(style_change) => {
+                &ShapeRecord::StyleChange(ref style_change) => {
                     let mut style_change = style_change.clone();
                     if let Some((start_x, start_y)) = style_change.move_to {
                         let end = end_iter.next().unwrap();
@@ -337,7 +335,7 @@ impl<'gc> DisplayObject<'gc> for MorphShape {
     }
 }
 
-unsafe impl<'gc> Collect for MorphShape {
+unsafe impl<'gc> gc_arena::Collect for MorphShape {
     #[inline]
     fn needs_trace() -> bool {
         false

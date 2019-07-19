@@ -1,8 +1,7 @@
 use crate::player::{RenderContext, UpdateContext};
 use crate::prelude::*;
 use crate::transform::Transform;
-use gc_arena::{Collect, Gc, GcCell, MutationContext};
-use std::collections::VecDeque;
+use gc_arena::{Collect, GcCell};
 
 #[derive(Clone, Collect)]
 #[collect(empty_drop)]

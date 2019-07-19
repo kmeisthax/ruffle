@@ -2,7 +2,6 @@ use crate::display_object::{DisplayObject, DisplayObjectBase};
 use crate::matrix::Matrix;
 use crate::player::{RenderContext, UpdateContext};
 use crate::prelude::*;
-use gc_arena::{Collect, CollectionContext, Gc, GcCell, MutationContext};
 use std::collections::BTreeMap;
 
 #[derive(Clone)]
@@ -16,7 +15,11 @@ pub struct Button<'gc> {
 }
 
 impl<'gc> Button<'gc> {
-    pub fn from_swf_tag(button: &swf::Button, library: &crate::library::Library<'gc>, gc_context: MutationContext<'gc, '_>) -> Self {
+    pub fn from_swf_tag(
+        button: &swf::Button,
+        library: &crate::library::Library<'gc>,
+        gc_context: gc_arena::MutationContext<'gc, '_>,
+    ) -> Self {
         use swf::ButtonState;
         let mut children = [
             BTreeMap::new(),
@@ -25,9 +28,15 @@ impl<'gc> Button<'gc> {
             BTreeMap::new(),
         ];
         for record in &button.records {
-            let mut child = library.instantiate_display_object(record.id, gc_context).unwrap();
-            child.write(gc_context).set_matrix(&record.matrix.clone().into());
-            child.write(gc_context).set_color_transform(&record.color_transform.clone().into());
+            let child = library
+                .instantiate_display_object(record.id, gc_context)
+                .unwrap();
+            child
+                .write(gc_context)
+                .set_matrix(&record.matrix.clone().into());
+            child
+                .write(gc_context)
+                .set_color_transform(&record.color_transform.clone().into());
             for state in &record.states {
                 let i = match state {
                     ButtonState::Up => 0,
@@ -57,10 +66,7 @@ impl<'gc> Button<'gc> {
         }
     }
 
-    fn children_in_state(
-        &self,
-        state: ButtonState,
-    ) -> impl Iterator<Item = &DisplayNode<'gc>> {
+    fn children_in_state(&self, state: ButtonState) -> impl Iterator<Item = &DisplayNode<'gc>> {
         let i = match state {
             ButtonState::Up => 0,
             ButtonState::Over => 1,
@@ -140,9 +146,9 @@ enum ButtonState {
     Down,
 }
 
-unsafe impl<'gc> Collect for Button<'gc> {
+unsafe impl<'gc> gc_arena::Collect for Button<'gc> {
     #[inline]
-    fn trace(&self, cc: CollectionContext) {
+    fn trace(&self, cc: gc_arena::CollectionContext) {
         for state in &self.children {
             for child in state.values() {
                 child.trace(cc);

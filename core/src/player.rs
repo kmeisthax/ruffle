@@ -6,11 +6,9 @@ use crate::library::Library;
 use crate::movie_clip::MovieClip;
 use crate::prelude::*;
 use crate::transform::TransformStack;
-use gc_arena::{make_arena, ArenaParameters, Collect, Gc, GcCell, MutationContext};
+use gc_arena::{make_arena, ArenaParameters, Collect, GcCell, MutationContext};
 use log::info;
 use std::io::Cursor;
-
-type CharacterId = swf::CharacterId;
 
 #[derive(Collect)]
 #[collect(empty_drop)]
@@ -200,7 +198,7 @@ impl Player {
         self.renderer.clear(self.background_color.clone());
 
         let (renderer, transform_stack) = (&mut *self.renderer, &mut self.transform_stack);
-        self.gc_arena.mutate(|gc_context, gc_root| {
+        self.gc_arena.mutate(|_gc_context, gc_root| {
             let mut render_context = RenderContext {
                 renderer,
                 library: gc_root.library.read(),
