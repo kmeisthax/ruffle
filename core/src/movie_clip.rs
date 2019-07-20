@@ -18,8 +18,9 @@ type FrameNumber = u16;
 #[derive(Clone)]
 pub struct MovieClip<'gc> {
     base: DisplayObjectBase,
-    tag_stream_start: Option<u64>,
+    tag_stream_start: u64,
     tag_stream_pos: u64,
+    tag_stream_len: usize,
     is_playing: bool,
     action: Option<(usize, usize)>,
     goto_queue: Vec<FrameNumber>,
@@ -36,8 +37,9 @@ impl<'gc> MovieClip<'gc> {
     pub fn new() -> Self {
         Self {
             base: Default::default(),
-            tag_stream_start: None,
+            tag_stream_start: 0,
             tag_stream_pos: 0,
+            tag_stream_len: 0,
             is_playing: true,
             action: None,
             goto_queue: Vec::new(),
@@ -49,11 +51,12 @@ impl<'gc> MovieClip<'gc> {
         }
     }
 
-    pub fn new_with_data(tag_stream_start: u64, num_frames: u16) -> Self {
+    pub fn new_with_data(tag_stream_start: u64, tag_stream_len: usize, num_frames: u16) -> Self {
         Self {
             base: Default::default(),
-            tag_stream_start: Some(tag_stream_start),
-            tag_stream_pos: tag_stream_start,
+            tag_stream_start,
+            tag_stream_pos: 0,
+            tag_stream_len,
             is_playing: true,
             action: None,
             goto_queue: Vec::new(),
@@ -137,21 +140,16 @@ impl<'gc> MovieClip<'gc> {
     pub fn frame_label_to_number(
         &self,
         frame_label: &str,
-        context: &mut UpdateContext,
+        context: &mut UpdateContext<'_, '_, '_>,
     ) -> Option<FrameNumber> {
         // TODO(Herschel): We should cache the labels in the preload step.
-        let pos = context.tag_stream.get_ref().position();
-        context
-            .tag_stream
-            .get_inner()
-            .set_position(self.tag_stream_start.unwrap());
+        let mut reader = self.reader(context);
         use swf::Tag;
         let mut frame_num = 1;
-        while let Ok(Some(tag)) = context.tag_stream.read_tag() {
+        while let Ok(Some(tag)) = reader.read_tag() {
             match tag {
                 Tag::FrameLabel { label, .. } => {
                     if label == frame_label {
-                        context.tag_stream.get_inner().set_position(pos);
                         return Some(frame_num);
                     }
                 }
@@ -159,7 +157,6 @@ impl<'gc> MovieClip<'gc> {
                 _ => (),
             }
         }
-        context.tag_stream.get_inner().set_position(pos);
         None
     }
 
@@ -182,7 +179,7 @@ impl<'gc> MovieClip<'gc> {
                 // Reset everything to blank, start from frame 1,
                 // and advance forward
                 self.children.clear();
-                self.tag_stream_pos = self.tag_stream_start.unwrap_or(0);
+                self.tag_stream_pos = self.tag_stream_start;
                 self.current_frame = 0;
                 while self.current_frame + 1 < frame {
                     self.run_frame_internal(context, true);
@@ -279,6 +276,17 @@ impl<'gc> MovieClip<'gc> {
         }
     }
 
+    fn reader<'a>(
+        &self,
+        context: &UpdateContext<'a, '_, '_>,
+    ) -> swf::read::Reader<std::io::Cursor<&'a [u8]>> {
+        let mut cursor = std::io::Cursor::new(
+            &context.swf_data[self.tag_stream_start as usize
+                ..self.tag_stream_start as usize + self.tag_stream_len],
+        );
+        cursor.set_position(self.tag_stream_pos);
+        swf::read::Reader::new(cursor, context.swf_version)
+    }
     fn run_frame_internal(
         &mut self,
         context: &mut UpdateContext<'_, 'gc, '_>,
@@ -292,19 +300,13 @@ impl<'gc> MovieClip<'gc> {
         } else {
             self.current_frame = 1;
             self.children.clear();
-            if let Some(start) = self.tag_stream_start {
-                self.tag_stream_pos = start;
-            }
+            self.tag_stream_pos = self.tag_stream_start;
         }
 
-        context
-            .tag_stream
-            .get_inner()
-            .set_position(self.tag_stream_pos);
+        let mut tag_pos = self.tag_stream_pos;
+        let mut reader = self.reader(context);
 
-        let mut start_pos = self.tag_stream_pos;
-
-        while let Ok(Some(tag)) = context.tag_stream.read_tag() {
+        while let Ok(Some(tag)) = reader.read_tag() {
             if only_display_actions {
                 match tag {
                     Tag::ShowFrame => break,
@@ -345,20 +347,20 @@ impl<'gc> MovieClip<'gc> {
                     Tag::JpegTables(_) => (),
                     // Tag::DoAction(data) => self.do_action(context, &data[..]),
                     Tag::DoAction(data) => {
-                        let pos = context.tag_stream.get_ref().position();
-                        context.tag_stream.get_inner().set_position(start_pos);
-                        context.tag_stream.read_tag_code_and_length().unwrap();
-                        let start_pos = context.tag_stream.get_ref().position();
-                        context.tag_stream.get_inner().set_position(pos);
-                        self.action = Some((start_pos as usize, data.len()));
+                        let pos = reader.get_ref().position();
+                        reader.get_inner().set_position(tag_pos);
+                        reader.read_tag_code_and_length().unwrap();
+                        let action_pos = reader.get_ref().position();
+                        reader.get_inner().set_position(pos);
+                        self.action = Some((action_pos as usize, data.len()));
                     }
                     _ => (), // info!("Umimplemented tag: {:?}", tag),
                 }
-                start_pos = context.tag_stream.get_ref().position();
+                tag_pos = reader.get_ref().position();
             }
         }
 
-        self.tag_stream_pos = context.tag_stream.get_ref().position();
+        self.tag_stream_pos = reader.get_ref().position();
     }
 
     fn sound_stream_head(
@@ -411,15 +413,12 @@ impl<'gc> DisplayObject<'gc> for MovieClip<'gc> {
     impl_display_object!(base);
 
     fn preload(&mut self, context: &mut UpdateContext) {
-        context
-            .tag_stream
-            .get_inner()
-            .set_position(self.tag_stream_start.unwrap());
+        let mut reader = self.reader(context);
 
         let mut ids = HashMap::new();
         use swf::Tag;
-        let mut start_pos = context.tag_stream.get_ref().position();
-        while let Ok(Some(tag)) = context.tag_stream.read_tag() {
+        let mut tag_pos = reader.get_ref().position();
+        while let Ok(Some(tag)) = reader.read_tag() {
             match tag {
                 // Definition Tags
                 Tag::DefineButton2(swf_button) => {
@@ -532,15 +531,14 @@ impl<'gc> DisplayObject<'gc> for MovieClip<'gc> {
                     }
                 }
                 Tag::DefineSprite(swf_sprite) => {
-                    let pos = context.tag_stream.get_ref().position();
-                    context.tag_stream.get_inner().set_position(start_pos);
-                    context.tag_stream.read_tag_code_and_length().unwrap();
-                    context.tag_stream.read_u32().unwrap();
-                    let mc_start_pos = context.tag_stream.get_ref().position();
-                    context.tag_stream.get_inner().set_position(pos);
+                    let pos = reader.get_ref().position();
+                    reader.get_inner().set_position(tag_pos);
+                    let (_, len) = reader.read_tag_code_and_length().unwrap();
+                    reader.read_u32().unwrap();
+                    let mc_start_pos = reader.get_ref().position();
                     if !context.library.contains_character(swf_sprite.id) {
                         let mut movie_clip =
-                            MovieClip::new_with_data(mc_start_pos, swf_sprite.num_frames);
+                            MovieClip::new_with_data(mc_start_pos, len, swf_sprite.num_frames);
 
                         movie_clip.preload(context);
 
@@ -549,6 +547,7 @@ impl<'gc> DisplayObject<'gc> for MovieClip<'gc> {
                             Character::MovieClip(Box::new(movie_clip)),
                         );
                     }
+                    reader.get_inner().set_position(pos);
                 }
                 Tag::DefineText(text) => {
                     if !context.library.contains_character(text.id) {
@@ -587,7 +586,7 @@ impl<'gc> DisplayObject<'gc> for MovieClip<'gc> {
                 Tag::JpegTables(data) => context.library.set_jpeg_tables(data),
                 _ => (),
             }
-            start_pos = context.tag_stream.get_inner().position();
+            tag_pos = reader.get_inner().position();
         }
 
         if let Some(stream) = self.audio_stream {
@@ -597,11 +596,6 @@ impl<'gc> DisplayObject<'gc> for MovieClip<'gc> {
 
     fn run_frame(&mut self, context: &mut UpdateContext<'_, 'gc, '_>) {
         self.action = None;
-        if self.tag_stream_start.is_some() {
-            context
-                .position_stack
-                .push(context.tag_stream.get_ref().position());
-        }
 
         if self.is_playing {
             self.run_frame_internal(context, false);
@@ -611,13 +605,6 @@ impl<'gc> DisplayObject<'gc> for MovieClip<'gc> {
         // Parent first? Children first? Sorted by depth?
         for child in self.children.values_mut() {
             child.write(context.gc_context).run_frame(context);
-        }
-
-        if self.tag_stream_start.is_some() {
-            context
-                .tag_stream
-                .get_inner()
-                .set_position(context.position_stack.pop().unwrap());
         }
     }
 

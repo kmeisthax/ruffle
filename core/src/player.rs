@@ -8,7 +8,6 @@ use crate::prelude::*;
 use crate::transform::TransformStack;
 use gc_arena::{make_arena, ArenaParameters, Collect, GcCell, MutationContext};
 use log::info;
-use std::io::Cursor;
 
 #[derive(Collect)]
 #[collect(empty_drop)]
@@ -20,7 +19,8 @@ struct GcRoot<'gc> {
 make_arena!(GcArena, GcRoot);
 
 pub struct Player {
-    tag_stream: swf::read::Reader<Cursor<Vec<u8>>>,
+    swf_data: Vec<u8>,
+    swf_version: u8,
 
     avm: Avm1,
     audio: Audio,
@@ -50,7 +50,7 @@ impl Player {
         // Decompress the entire SWF in memory.
         let mut data = Vec::new();
         reader.get_mut().read_to_end(&mut data)?;
-        let tag_stream = swf::read::Reader::new(Cursor::new(data), header.version);
+        let swf_len = data.len();
 
         info!("{}x{}", header.stage_size.x_max, header.stage_size.y_max);
 
@@ -59,7 +59,8 @@ impl Player {
         renderer.set_dimensions(movie_width, movie_height);
 
         let mut player = Player {
-            tag_stream,
+            swf_data: data,
+            swf_version: header.version,
 
             avm: Avm1::new(header.version),
             renderer,
@@ -75,7 +76,7 @@ impl Player {
 
             gc_arena: GcArena::new(ArenaParameters::default(), |gc_context| GcRoot {
                 library: GcCell::allocate(gc_context, Library::new()),
-                root: GcCell::allocate(gc_context, MovieClip::new_with_data(0, header.num_frames)),
+                root: GcCell::allocate(gc_context, MovieClip::new_with_data(0, swf_len, header.num_frames)),
             }),
 
             frame_rate: header.frame_rate.into(),
@@ -128,10 +129,11 @@ impl Player {
     }
 
     fn preload(&mut self) {
-        let (global_time, mouse_pos, tag_stream, background_color, renderer, audio, avm) = (
+        let (global_time, mouse_pos, swf_data, swf_version, background_color, renderer, audio, avm) = (
             self.global_time,
             self.mouse_pos,
-            &mut self.tag_stream,
+            &mut self.swf_data,
+            self.swf_version,
             &mut self.background_color,
             &mut *self.renderer,
             &mut self.audio,
@@ -142,8 +144,8 @@ impl Player {
             let mut update_context = UpdateContext {
                 global_time,
                 mouse_pos,
-                tag_stream,
-                position_stack: vec![],
+                swf_data,
+                swf_version,
                 library: gc_root.library.write(gc_context),
                 background_color,
                 avm,
@@ -158,10 +160,11 @@ impl Player {
     }
 
     fn run_frame(&mut self) {
-        let (global_time, mouse_pos, tag_stream, background_color, renderer, audio, avm) = (
+        let (global_time, mouse_pos, swf_data, swf_version, background_color, renderer, audio, avm) = (
             self.global_time,
             self.mouse_pos,
-            &mut self.tag_stream,
+            &mut self.swf_data,
+            self.swf_version,
             &mut self.background_color,
             &mut *self.renderer,
             &mut self.audio,
@@ -172,8 +175,8 @@ impl Player {
             let mut update_context = UpdateContext {
                 global_time,
                 mouse_pos,
-                tag_stream,
-                position_stack: vec![],
+                swf_data,
+                swf_version,
                 library: gc_root.library.write(gc_context),
                 background_color,
                 avm,
@@ -214,10 +217,10 @@ impl Player {
 }
 
 pub struct UpdateContext<'a, 'gc, 'gc_context> {
+    pub swf_version: u8,
+    pub swf_data: &'a [u8],
     pub global_time: u64,
     pub mouse_pos: (f32, f32),
-    pub tag_stream: &'a mut swf::read::Reader<Cursor<Vec<u8>>>,
-    pub position_stack: Vec<u64>,
     pub library: std::cell::RefMut<'a, Library<'gc>>,
     pub gc_context: MutationContext<'gc, 'gc_context>,
     pub background_color: &'a mut Color,
