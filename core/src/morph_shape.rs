@@ -1,7 +1,5 @@
 use crate::backend::render::{RenderBackend, ShapeHandle};
-use crate::color_transform::ColorTransform;
 use crate::display_object::{DisplayObject, DisplayObjectBase};
-use crate::matrix::Matrix;
 use crate::player::{RenderContext, UpdateContext};
 use crate::prelude::*;
 use std::collections::HashMap;
