@@ -4,3 +4,6 @@ members = [
     "desktop",
     "web"
 ]
+
+[patch.'https://github.com/Herschel/swf-rs']
+swf = { path = '../swf-rs' }

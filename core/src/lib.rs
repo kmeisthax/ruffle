@@ -12,6 +12,7 @@ mod library;
 pub mod matrix;
 mod morph_shape;
 mod movie_clip;
+mod tag_decoder;
 mod player;
 mod prelude;
 pub mod shape_utils;
