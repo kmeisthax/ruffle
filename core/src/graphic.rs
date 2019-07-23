@@ -1,4 +1,4 @@
-use crate::backend::render::ShapeHandle;
+use crate::backend::render::{RenderBackend, ShapeHandle};
 use crate::display_object::{DisplayObject, DisplayObjectBase};
 use crate::player::{RenderContext, UpdateContext};
 
@@ -10,8 +10,8 @@ pub struct Graphic {
 }
 
 impl Graphic {
-    pub fn from_swf_tag(swf_shape: &swf::Shape, context: &mut UpdateContext) -> Graphic {
-        let shape_handle = context.renderer.register_shape(swf_shape);
+    pub fn from_swf_tag(swf_shape: &swf::Shape, renderer: &mut RenderBackend) -> Graphic {
+        let shape_handle = renderer.register_shape(swf_shape);
         Graphic {
             base: Default::default(),
             shape_handle,

@@ -153,7 +153,6 @@ impl Player {
                 audio,
                 action: None,
                 gc_context,
-                tag_len: 0,
             };
 
             gc_root.root.write(gc_context).preload(&mut update_context);
@@ -185,7 +184,6 @@ impl Player {
                 audio,
                 action: None,
                 gc_context,
-                tag_len: 0,
             };
 
             gc_root
@@ -230,7 +228,6 @@ pub struct UpdateContext<'a, 'gc, 'gc_context> {
     pub renderer: &'a mut RenderBackend,
     pub audio: &'a mut Audio,
     pub action: Option<(usize, usize)>,
-    pub tag_len: usize,
 }
 
 pub struct RenderContext<'a, 'gc> {

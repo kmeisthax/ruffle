@@ -19,7 +19,7 @@ pub struct MorphShape {
 }
 
 impl MorphShape {
-    pub fn from_swf_tag(swf_tag: &swf::DefineMorphShape, context: &mut UpdateContext) -> Self {
+    pub fn from_swf_tag(swf_tag: &swf::DefineMorphShape, renderer: &mut RenderBackend) -> Self {
         // Convert the MorphShape into a normal Shape.
         // TODO(Herschel): impl From in swf crate?
         let mut morph_shape = Self {
@@ -30,8 +30,8 @@ impl MorphShape {
             ratio: 0,
         };
 
-        morph_shape.register_ratio(context.renderer, 0);
-        morph_shape.register_ratio(context.renderer, 65535);
+        morph_shape.register_ratio(renderer, 0);
+        morph_shape.register_ratio(renderer, 65535);
 
         morph_shape
     }
