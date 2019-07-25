@@ -28,8 +28,8 @@ pub struct MovieClip<'gc> {
     current_frame: FrameNumber,
     total_frames: FrameNumber,
 
+    audio_stream_info: Option<swf::SoundStreamHead>,
     audio_stream: Option<AudioStreamHandle>,
-    stream_started: bool,
 
     children: BTreeMap<Depth, DisplayNode<'gc>>,
 }
@@ -47,7 +47,7 @@ impl<'gc> MovieClip<'gc> {
             current_frame: 0,
             total_frames: 1,
             audio_stream: None,
-            stream_started: false,
+            audio_stream_info: None,
             children: BTreeMap::new(),
         }
     }
@@ -63,7 +63,7 @@ impl<'gc> MovieClip<'gc> {
             goto_queue: Vec::new(),
             current_frame: 0,
             audio_stream: None,
-            stream_started: false,
+            audio_stream_info: None,
             total_frames: num_frames,
             children: BTreeMap::new(),
         }
@@ -284,7 +284,7 @@ impl<'gc> DisplayObject<'gc> for MovieClip<'gc> {
             TagCode::DefineShape2 => self.define_shape(context, reader, 2),
             TagCode::DefineShape3 => self.define_shape(context, reader, 3),
             TagCode::DefineShape4 => self.define_shape(context, reader, 4),
-            TagCode::DefineSound => self.define_sound(context, reader),
+            TagCode::DefineSound => self.define_sound(context, reader, tag_len),
             TagCode::DefineSprite => self.define_sprite(context, reader, tag_len),
             TagCode::DefineText => self.define_text(context, reader),
             TagCode::JpegTables => self.jpeg_tables(context, reader, tag_len),
@@ -610,8 +610,11 @@ impl<'gc, 'a> MovieClip<'gc> {
         &mut self,
         context: &mut UpdateContext<'_, 'gc, '_>,
         reader: &mut SwfStream<&'a [u8]>,
+        tag_len: usize,
     ) -> DecodeResult {
         // TODO(Herschel): Can we use a slice of the sound data instead of copying the data?
+        use std::io::Read;
+        let mut reader = swf::read::Reader::new(reader.get_mut().take(tag_len as u64), context.swf_version);
         let sound = reader.read_define_sound()?;
         let handle = context.audio.register_sound(&sound).unwrap();
         context
@@ -822,21 +825,32 @@ impl<'gc, 'a> MovieClip<'gc> {
     #[inline]
     fn sound_stream_block(
         &mut self,
-        _context: &mut UpdateContext<'_, 'gc, '_>,
+        context: &mut UpdateContext<'_, 'gc, '_>,
         _reader: &mut SwfStream<&'a [u8]>,
     ) -> DecodeResult {
-        // TODO
+        if let (Some(stream_info), None) = (&self.audio_stream_info, &self.audio_stream) {
+            let slice = crate::tag_utils::SwfSlice {
+                data: std::sync::Arc::clone(context.swf_data),
+                start: self.tag_stream_start as usize,
+                end: self.tag_stream_start as usize + self.tag_stream_len,
+            };
+            let audio_stream = context
+                .audio
+                .start_stream(1, slice, stream_info);
+            self.audio_stream = Some(audio_stream);
+        }
+
         Ok(())
     }
 
     #[inline]
     fn sound_stream_head(
         &mut self,
-        _context: &mut UpdateContext<'_, 'gc, '_>,
-        _reader: &mut SwfStream<&'a [u8]>,
+        context: &mut UpdateContext<'_, 'gc, '_>,
+        reader: &mut SwfStream<&'a [u8]>,
         _version: u8,
     ) -> DecodeResult {
-        // TODO
+        self.audio_stream_info = Some(reader.read_sound_stream_head()?);
         Ok(())
     }
 

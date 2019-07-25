@@ -8,6 +8,7 @@ use crate::prelude::*;
 use crate::transform::TransformStack;
 use gc_arena::{make_arena, ArenaParameters, Collect, GcCell, MutationContext};
 use log::info;
+use std::sync::Arc;
 
 #[derive(Collect)]
 #[collect(empty_drop)]
@@ -19,7 +20,7 @@ struct GcRoot<'gc> {
 make_arena!(GcArena, GcRoot);
 
 pub struct Player {
-    swf_data: Vec<u8>,
+    swf_data: Arc<Vec<u8>>,
     swf_version: u8,
 
     avm: Avm1,
@@ -59,7 +60,7 @@ impl Player {
         renderer.set_dimensions(movie_width, movie_height);
 
         let mut player = Player {
-            swf_data: data,
+            swf_data: Arc::new(data),
             swf_version: header.version,
 
             avm: Avm1::new(header.version),
@@ -218,7 +219,7 @@ impl Player {
 
 pub struct UpdateContext<'a, 'gc, 'gc_context> {
     pub swf_version: u8,
-    pub swf_data: &'a [u8],
+    pub swf_data: &'a Arc<Vec<u8>>,
     pub global_time: u64,
     pub mouse_pos: (f32, f32),
     pub library: std::cell::RefMut<'a, Library<'gc>>,

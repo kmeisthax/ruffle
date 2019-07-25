@@ -1,28 +1,30 @@
 use generational_arena::Arena;
-use js_sys::Uint8Array;
+use ruffle_core::backend::audio::decoders::{stream_tag_reader, AdpcmDecoder, Mp3Decoder};
 use ruffle_core::backend::audio::{swf, AudioBackend, AudioStreamHandle, SoundHandle};
+use std::cell::RefCell;
 use wasm_bindgen::{closure::Closure, JsCast};
 use web_sys::AudioContext;
 
 thread_local! {
-    //pub static SOUNDS: RefCell<Vec<>>>> = RefCell::new(vec![]);
+    static STREAMS: RefCell<Arena<AudioStream>> = RefCell::new(Arena::new());
+}
+
+struct Sound {
+    format: swf::SoundFormat,
+    data: Vec<u8>,
 }
 
 pub struct WebAudioBackend {
     context: AudioContext,
     sounds: Arena<Sound>,
-    streams: Arena<AudioStream>,
 }
 
-struct Sound {
-    object: js_sys::Object,
-}
-
+type Decoder = Box<dyn Iterator<Item=i16>>;
 struct AudioStream {
-    info: swf::SoundStreamHead,
-    compressed_data: Vec<u8>,
-    sample_data: [Vec<f32>; 2],
-    object: js_sys::Object,
+    decoder: Decoder,
+    is_stereo: bool,
+    left_samples: Vec<f32>,
+    right_samples: Vec<f32>,
 }
 
 type Error = Box<std::error::Error>;
@@ -30,277 +32,222 @@ type Error = Box<std::error::Error>;
 impl WebAudioBackend {
     pub fn new() -> Result<Self, Error> {
         let context = AudioContext::new().map_err(|_| "Unable to create AudioContext")?;
+        log::info!("sample rate: {}", context.sample_rate());
         Ok(Self {
             context,
             sounds: Arena::new(),
-            streams: Arena::new(),
         })
+    }
+
+    fn update_script_processor(
+        audio_stream: &mut AudioStream,
+        event: web_sys::AudioProcessingEvent,
+    ) -> bool {
+        let output_buffer = event.output_buffer().unwrap();
+        let num_frames = output_buffer.length() as usize;
+        let mut complete = false;
+        audio_stream.left_samples.clear();
+        audio_stream.right_samples.clear();
+        for _ in 0..num_frames {
+            if let (Some(l), Some(r)) = (audio_stream.decoder.next(), audio_stream.decoder.next()) {
+                audio_stream.left_samples.push(f32::from(l) / 32767.0);
+                if audio_stream.is_stereo {
+                    audio_stream.right_samples.push(f32::from(r) / 32767.0);
+                }
+            } else {
+                complete = true;
+                break;
+            }
+        }
+        output_buffer.copy_to_channel(&mut audio_stream.left_samples[..], 0).unwrap();
+        if audio_stream.is_stereo {
+            output_buffer.copy_to_channel(&mut audio_stream.right_samples[..], 1).unwrap();
+        }
+        complete
     }
 }
 
 impl AudioBackend for WebAudioBackend {
-    fn register_sound(&mut self, swf_sound: &swf::Sound) -> Result<SoundHandle, Error> {
-        let object = js_sys::Object::new();
-        let sound = Sound {
-            object: object.clone(),
-        };
-        let value = wasm_bindgen::JsValue::from(object);
-        let handle = self.sounds.insert(sound);
-
-        // Firefox doesn't seem to support <11025Hz sample rates.
-        let (sample_multiplier, sample_rate) = if swf_sound.format.sample_rate < 11025 {
-            (2, 11025)
-        } else {
-            (1, swf_sound.format.sample_rate)
-        };
-
-        log::info!(
-            "Compression: {:?} SR: {} {} {}",
-            swf_sound.format.compression,
-            swf_sound.format.sample_rate,
-            sample_rate,
-            sample_multiplier
-        );
-
-        use byteorder::{LittleEndian, ReadBytesExt};
-        match swf_sound.format.compression {
-            swf::AudioCompression::Uncompressed => {
-                let num_channels: usize = if swf_sound.format.is_stereo { 2 } else { 1 };
-                let num_frames = swf_sound.data.len() * sample_multiplier / num_channels;
-                let audio_buffer = self
-                    .context
-                    .create_buffer(num_channels as u32, num_frames as u32, sample_rate.into())
-                    .unwrap();
-                let mut out = Vec::with_capacity(num_channels);
-                for _ in 0..num_channels {
-                    out.push(Vec::with_capacity(num_frames));
-                }
-                let mut data = &swf_sound.data[..];
-                while !data.is_empty() {
-                    for channel in &mut out {
-                        if sample_rate != swf_sound.format.sample_rate {
-                            let sample = f32::from(data.read_i16::<LittleEndian>()?) / 32768.0;
-                            for _ in 0..sample_multiplier {
-                                channel.push(sample);
-                            }
-                        }
-                    }
-                }
-                for (i, channel) in out.iter_mut().enumerate() {
-                    audio_buffer
-                        .copy_to_channel(&mut channel[..], i as i32)
-                        .unwrap();
-                }
-                js_sys::Reflect::set(&value, &"buffer".into(), &audio_buffer).unwrap();
-            }
-            swf::AudioCompression::Adpcm => {
-                let num_channels: usize = if swf_sound.format.is_stereo { 2 } else { 1 };
-                let audio_buffer = self
-                    .context
-                    .create_buffer(
-                        num_channels as u32,
-                        swf_sound.num_samples * sample_multiplier as u32,
-                        sample_rate.into(),
-                    )
-                    .unwrap();
-                let mut out = Vec::with_capacity(num_channels);
-                let data = &swf_sound.data[..];
-                let mut decoder = ruffle_core::backend::audio::AdpcmDecoder::new(
-                    data,
-                    swf_sound.format.is_stereo,
-                )?;
-                for _ in 0..num_channels {
-                    out.push(Vec::with_capacity(swf_sound.num_samples as usize));
-                }
-                while let Ok((left, right)) = decoder.next_sample() {
-                    for _ in 0..sample_multiplier {
-                        out[0].push(f32::from(left) / 32768.0);
-                        if swf_sound.format.is_stereo {
-                            out[1].push(f32::from(right) / 32768.0);
-                        }
-                    }
-                }
-                for (i, channel) in out.iter_mut().enumerate() {
-                    audio_buffer
-                        .copy_to_channel(&mut channel[..], i as i32)
-                        .unwrap();
-                }
-                js_sys::Reflect::set(&value, &"buffer".into(), &audio_buffer).unwrap();
-            }
-            swf::AudioCompression::Mp3 => {
-                let data_array = unsafe { Uint8Array::view(&swf_sound.data[2..]) };
-                let array_buffer = data_array.buffer().slice_with_end(
-                    data_array.byte_offset(),
-                    data_array.byte_offset() + data_array.byte_length(),
-                );
-                let closure = Closure::wrap(Box::new(move |buffer: wasm_bindgen::JsValue| {
-                    js_sys::Reflect::set(&value, &"buffer".into(), &buffer).unwrap();
-                })
-                    as Box<dyn FnMut(wasm_bindgen::JsValue)>);
-                self.context
-                    .decode_audio_data(&array_buffer)
-                    .unwrap()
-                    .then(&closure);
-                closure.forget();
-            }
-            _ => unimplemented!(),
-        }
-        Ok(handle)
-    }
-
-    fn register_stream(&mut self, stream_info: &swf::SoundStreamHead) -> AudioStreamHandle {
-        let stream = AudioStream {
-            info: stream_info.clone(),
-            sample_data: [vec![], vec![]],
-            compressed_data: vec![],
-            object: js_sys::Object::new(),
-        };
-        self.streams.insert(stream)
+    fn register_sound(&mut self, sound: &swf::Sound) -> Result<SoundHandle, Error> {
+        Ok(self.sounds.insert(Sound {
+            format: sound.format.clone(),
+            data: sound.data.clone(),
+        }))
     }
 
     fn play_sound(&mut self, sound: SoundHandle) {
         if let Some(sound) = self.sounds.get(sound) {
-            let object = js_sys::Reflect::get(&sound.object, &"buffer".into()).unwrap();
-            if object.is_undefined() {
-                return;
-            }
-            let buffer: &web_sys::AudioBuffer = object.dyn_ref().unwrap();
-            let buffer_node = self.context.create_buffer_source().unwrap();
-            buffer_node.set_buffer(Some(buffer));
-            buffer_node
-                .connect_with_audio_node(&self.context.destination())
-                .unwrap();
-
-            buffer_node.start().unwrap();
-        }
-    }
-
-    fn queue_stream_samples(&mut self, _handle: AudioStreamHandle, _samples: &[u8]) {}
-
-    fn preload_stream_samples(&mut self, handle: AudioStreamHandle, samples: &[u8]) {
-        use swf::AudioCompression;
-        if let Some(stream) = self.streams.get_mut(handle) {
-            let format = &stream.info.stream_format;
-            let num_channels = if format.is_stereo { 2 } else { 1 };
-            let frame_size = num_channels * if format.is_16_bit { 2 } else { 1 };
-            let _num_frames = samples.len() / frame_size;
-            let mut i = 0;
-            match format.compression {
-                AudioCompression::Uncompressed | AudioCompression::UncompressedUnknownEndian => {
-                    if format.is_16_bit {
-                        while i < samples.len() {
-                            for c in 0..num_channels {
-                                let sample = (u16::from(samples[i])
-                                    | (u16::from(samples[i + 1]) << 8))
-                                    as i16;
-                                stream.sample_data[c].push((f32::from(sample)) / 32768.0);
-                                i += 2;
-                            }
-                        }
-                    } else {
-                        while i < samples.len() {
-                            for c in 0..num_channels {
-                                stream.sample_data[c].push((f32::from(samples[i]) - 127.0) / 128.0);
-                                i += 1;
-                            }
-                        }
-                    }
-                }
-                AudioCompression::Mp3 => {
-                    stream.compressed_data.extend_from_slice(&samples[4..]);
-                }
-                AudioCompression::Adpcm => {
-                    let mut decoder =
-                        ruffle_core::backend::audio::AdpcmDecoder::new(samples, format.is_stereo)
-                            .unwrap();
-                    while let Ok((left, right)) = decoder.next_sample() {
-                        stream.sample_data[0].push(f32::from(left) / 32768.0);
-                        if format.is_stereo {
-                            stream.sample_data[1].push(f32::from(right) / 32768.0);
-                        }
-                    }
-                }
-                _ => (),
-            }
-        }
-    }
-
-    fn preload_stream_finalize(&mut self, handle: AudioStreamHandle) {
-        if let Some(stream) = self.streams.get_mut(handle) {
-            let format = &stream.info.stream_format;
-
-            let num_channels = if format.is_stereo { 2 } else { 1 };
-
             use swf::AudioCompression;
-            match format.compression {
-                AudioCompression::UncompressedUnknownEndian
-                | AudioCompression::Uncompressed
-                | AudioCompression::Adpcm => {
-                    if stream.sample_data[0].is_empty() {
-                        return;
+            let decoder: Decoder = match sound.format.compression {
+                AudioCompression::Adpcm => Box::new(AdpcmDecoder::new(
+                    std::io::Cursor::new(sound.data.to_vec()),
+                        sound.format.is_stereo,
+                        sound.format.sample_rate
+                ).unwrap()),
+                AudioCompression::Mp3 => Box::new(Mp3Decoder::new(
+                    if sound.format.is_stereo {
+                        2
+                    } else {
+                        1
+                    },
+                    sound.format.sample_rate.into(),
+                    std::io::Cursor::new(sound.data.to_vec())//&sound.data[..]
+                )),
+                _ => unimplemented!()
+            };
+
+            log::info!("{} {}", sound.format.sample_rate, self.context.sample_rate());
+            let decoder: Decoder = if sound.format.sample_rate != self.context.sample_rate() as u16 {
+                Box::new(resample(decoder, sound.format.sample_rate, self.context.sample_rate() as u16, sound.format.is_stereo))
+            } else {
+                decoder
+            };
+
+            let audio_stream = AudioStream {
+                decoder,
+                left_samples: vec![],
+                right_samples: vec![],
+                is_stereo: sound.format.is_stereo,
+            };
+
+            let stream_handle = STREAMS.with(|streams| {
+                let mut streams = streams.borrow_mut();
+                streams.insert(audio_stream)
+            });
+
+            let script_processor_node = self.context.create_script_processor_with_buffer_size_and_number_of_input_channels_and_number_of_output_channels(4096, 0, if sound.format.is_stereo { 2 } else { 1 }).unwrap();
+            let script_node = script_processor_node.clone();
+            let f = Closure::wrap(Box::new(move |event| {
+                STREAMS.with(|streams| {
+                    let mut streams = streams.borrow_mut();
+                    let complete = if let Some(audio_stream) = streams.get_mut(stream_handle) {
+                        WebAudioBackend::update_script_processor(audio_stream, event)
+                    } else {
+                        false
+                    };
+                    if complete {
+                        streams.remove(stream_handle);
+                        script_node.disconnect().unwrap();
                     }
+                })
+            }) as Box<FnMut(web_sys::AudioProcessingEvent)>);
+            script_processor_node.set_onaudioprocess(Some(f.as_ref().unchecked_ref()));
+            f.forget();
 
-                    let frame_size = num_channels * if format.is_16_bit { 2 } else { 1 };
-                    let num_frames = stream.sample_data[0].len() / frame_size;
-                    let audio_buffer = self
-                        .context
-                        .create_buffer(
-                            num_channels as u32,
-                            num_frames as u32,
-                            format.sample_rate.into(),
-                        )
-                        .unwrap();
-                    for i in 0..num_channels {
-                        audio_buffer
-                            .copy_to_channel(&mut stream.sample_data[i][..], i as i32)
-                            .unwrap();
-                    }
-                    js_sys::Reflect::set(&stream.object, &"buffer".into(), &audio_buffer).unwrap();
-                }
-                AudioCompression::Mp3 => {
-                    if stream.compressed_data.is_empty() {
-                        return;
-                    }
-
-                    let data_array = unsafe { Uint8Array::view(&stream.compressed_data[..]) };
-                    let array_buffer = data_array.buffer().slice_with_end(
-                        data_array.byte_offset(),
-                        data_array.byte_offset() + data_array.byte_length(),
-                    );
-                    let object = stream.object.clone();
-                    let closure = Closure::wrap(Box::new(move |buffer: wasm_bindgen::JsValue| {
-                        js_sys::Reflect::set(&object, &"buffer".into(), &buffer).unwrap();
-                    })
-                        as Box<dyn FnMut(wasm_bindgen::JsValue)>);
-                    self.context
-                        .decode_audio_data(&array_buffer)
-                        .unwrap()
-                        .then(&closure);
-                    closure.forget();
-                }
-                _ => log::info!("Unsupported sound format"),
-            }
-        }
-    }
-
-    fn start_stream(&mut self, handle: AudioStreamHandle) -> bool {
-        if let Some(stream) = self.streams.get_mut(handle) {
-            let object = js_sys::Reflect::get(&stream.object, &"buffer".into()).unwrap();
-            if object.is_undefined() {
-                return false;
-            }
-
-            let buffer: &web_sys::AudioBuffer = object.dyn_ref().unwrap();
-            log::info!("Playing stream: {:?} {}", handle, buffer.length());
-
-            let buffer_node = self.context.create_buffer_source().unwrap();
-            buffer_node.set_buffer(Some(buffer));
-            buffer_node
+            script_processor_node
                 .connect_with_audio_node(&self.context.destination())
                 .unwrap();
-
-            buffer_node.start().unwrap();
         }
-        true
     }
+
+    fn start_stream(
+        &mut self,
+        _clip_id: swf::CharacterId,
+        clip_data: ruffle_core::tag_utils::SwfSlice,
+        stream_info: &swf::SoundStreamHead,
+    ) -> AudioStreamHandle {
+        let decoder = Mp3Decoder::new(
+            if stream_info.stream_format.is_stereo {
+                2
+            } else {
+                1
+            },
+            stream_info.stream_format.sample_rate.into(),
+            stream_tag_reader(clip_data),
+        );
+
+        let decoder: Decoder = if stream_info.stream_format.sample_rate != self.context.sample_rate() as u16 {
+            Box::new(resample(decoder, stream_info.stream_format.sample_rate, self.context.sample_rate() as u16, stream_info.stream_format.is_stereo))
+        } else {
+            Box::new(decoder)
+        };
+
+        let audio_stream = AudioStream {
+            decoder: Box::new(decoder),
+            left_samples: vec![],
+            right_samples: vec![],
+            is_stereo: stream_info.stream_format.is_stereo,
+        };
+
+        let stream_handle = STREAMS.with(|streams| {
+            let mut streams = streams.borrow_mut();
+            streams.insert(audio_stream)
+        });
+
+        let script_processor_node = self.context.create_script_processor_with_buffer_size_and_number_of_input_channels_and_number_of_output_channels(4096, 0, if stream_info.stream_format.is_stereo { 2 } else { 1 }).unwrap();
+        let script_node = script_processor_node.clone();
+        let f = Closure::wrap(Box::new(move |event| {
+            STREAMS.with(|streams| {
+                let mut streams = streams.borrow_mut();
+                let complete = if let Some(audio_stream) = streams.get_mut(stream_handle) {
+                    WebAudioBackend::update_script_processor(audio_stream, event)
+                } else {
+                    false
+                };
+                if complete {
+                    streams.remove(stream_handle);
+                    script_node.disconnect().unwrap();
+                }
+            })
+        }) as Box<FnMut(web_sys::AudioProcessingEvent)>);
+        script_processor_node.set_onaudioprocess(Some(f.as_ref().unchecked_ref()));
+        f.forget();
+
+        script_processor_node
+            .connect_with_audio_node(&self.context.destination())
+            .unwrap();
+
+        stream_handle
+    }
+}
+
+fn resample(mut input: impl Iterator<Item=i16>, input_sample_rate: u16, output_sample_rate: u16, is_stereo: bool) -> impl Iterator<Item=i16> {
+    let (mut left0, mut right0) = if is_stereo {
+        (input.next(), input.next())
+    } else {
+        let sample = input.next();
+        (sample, sample)
+    };
+    let (mut left1, mut right1) = if is_stereo {
+        (input.next(), input.next())
+    } else {
+        let sample = input.next();
+        (sample, sample)
+    };
+    let (mut left, mut right) = (left0.unwrap(), right0.unwrap());
+    let dt_input = 1.0 / f64::from(input_sample_rate);
+    let dt_output = 1.0 / f64::from(output_sample_rate);
+    let mut t = 0.0;
+    let mut cur_channel = 0;
+    std::iter::from_fn(move || {
+        if cur_channel == 1 {
+            cur_channel = 0;
+            return Some(right);
+        }
+        if let (Some(l0), Some(r0), Some(l1), Some(r1)) = (left0, right0, left1, right1) {
+            let a = t / dt_input;
+            let l0 = f64::from(l0);
+            let l1 = f64::from(l1);
+            let r0 = f64::from(r0);
+            let r1 = f64::from(r1);
+            left = (l0 + (l1 - l0) * a) as i16;
+            right = (r0 + (r1 - r0) * a) as i16;
+            t += dt_output;
+            while t >= dt_input {
+                t -= dt_input;
+                left0 = left1;
+                right0 = right1;
+                left1 = input.next();
+                if is_stereo {
+                    right1 = input.next();
+                } else {
+                    right1 = left1;
+                }
+            }
+            cur_channel = 1;
+            Some(left)
+        } else {
+            None
+        }
+    })
 }
