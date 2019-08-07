@@ -12,6 +12,9 @@ type Error = Box<std::error::Error>;
 
 pub trait AudioBackend {
     fn register_sound(&mut self, swf_sound: &swf::Sound) -> Result<SoundHandle, Error>;
+    fn preload_sound_stream_head(&mut self, clip_id: swf::CharacterId, stream_info: &swf::SoundStreamHead) { }
+    fn preload_sound_stream_block(&mut self, clip_id: swf::CharacterId, audio_data: &[u8]) { }
+    fn preload_sound_stream_end(&mut self, clip_id: swf::CharacterId) { }
     fn play_sound(&mut self, sound: SoundHandle);
     fn start_stream(
         &mut self,

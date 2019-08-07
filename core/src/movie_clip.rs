@@ -246,8 +246,6 @@ impl<'gc> MovieClip<'gc> {
                 TagCode::SetBackgroundColor => self.set_background_color(context, reader),
                 TagCode::StartSound => self.start_sound_1(context, reader),
                 TagCode::SoundStreamBlock => self.sound_stream_block(context, reader),
-                TagCode::SoundStreamHead => self.sound_stream_head(context, reader, 1),
-                TagCode::SoundStreamHead2 => self.sound_stream_head(context, reader, 2),
                 _ => Ok(()),
             };
             let _ = tag_utils::decode_tags(&mut reader, tag_callback, TagCode::ShowFrame);
@@ -294,9 +292,15 @@ impl<'gc> DisplayObject<'gc> for MovieClip<'gc> {
             TagCode::PlaceObject4 => self.preload_place_object(context, reader, &mut ids, 4),
             TagCode::RemoveObject => self.preload_remove_object(context, reader, &mut ids, 1),
             TagCode::RemoveObject2 => self.preload_remove_object(context, reader, &mut ids, 2),
+            TagCode::SoundStreamHead => self.preload_sound_stream_head(context, reader, 1),
+            TagCode::SoundStreamHead2 => self.preload_sound_stream_head(context, reader, 2),
+            TagCode::SoundStreamBlock => self.preload_sound_stream_block(context, reader, tag_len),
             _ => Ok(()),
         };
         let _ = tag_utils::decode_tags(&mut reader, tag_callback, TagCode::End);
+        if self.audio_stream_info.is_some() {
+            context.audio.preload_sound_stream_end(1);
+        }
     }
 
     fn run_frame(&mut self, context: &mut UpdateContext<'_, 'gc, '_>) {
@@ -460,6 +464,35 @@ impl<'gc, 'a> MovieClip<'gc> {
 
         Ok(())
     }
+
+    #[inline]
+    fn preload_sound_stream_block(
+        &mut self,
+        context: &mut UpdateContext<'_, 'gc, '_>,
+        reader: &mut SwfStream<&'a [u8]>,
+        tag_len: usize,
+    ) -> DecodeResult {
+        if let Some(stream_info) = &self.audio_stream_info {
+            let pos = reader.get_ref().position() as usize;
+            let data = reader.get_ref().get_ref();
+            let data = &data[pos..tag_len];
+            context.audio.preload_sound_stream_block(1, data);
+        }
+
+        Ok(())
+    }
+
+    #[inline]
+    fn preload_sound_stream_head(
+        &mut self,
+        context: &mut UpdateContext<'_, 'gc, '_>,
+        reader: &mut SwfStream<&'a [u8]>,
+        _version: u8,
+    ) -> DecodeResult {
+        self.audio_stream_info = Some(reader.read_sound_stream_head()?);
+        Ok(())
+    }
+
     #[inline]
     fn define_bits(
         &mut self,
@@ -840,17 +873,6 @@ impl<'gc, 'a> MovieClip<'gc> {
             self.audio_stream = Some(audio_stream);
         }
 
-        Ok(())
-    }
-
-    #[inline]
-    fn sound_stream_head(
-        &mut self,
-        context: &mut UpdateContext<'_, 'gc, '_>,
-        reader: &mut SwfStream<&'a [u8]>,
-        _version: u8,
-    ) -> DecodeResult {
-        self.audio_stream_info = Some(reader.read_sound_stream_head()?);
         Ok(())
     }
 
