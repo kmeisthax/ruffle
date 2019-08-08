@@ -19,6 +19,7 @@ type FrameNumber = u16;
 #[derive(Clone)]
 pub struct MovieClip<'gc> {
     base: DisplayObjectBase,
+    id: CharacterId,
     tag_stream_start: u64,
     tag_stream_pos: u64,
     tag_stream_len: usize,
@@ -38,6 +39,7 @@ impl<'gc> MovieClip<'gc> {
     pub fn new() -> Self {
         Self {
             base: Default::default(),
+            id: 0,
             tag_stream_start: 0,
             tag_stream_pos: 0,
             tag_stream_len: 0,
@@ -52,9 +54,15 @@ impl<'gc> MovieClip<'gc> {
         }
     }
 
-    pub fn new_with_data(tag_stream_start: u64, tag_stream_len: usize, num_frames: u16) -> Self {
+    pub fn new_with_data(
+        id: CharacterId,
+        tag_stream_start: u64,
+        tag_stream_len: usize,
+        num_frames: u16,
+    ) -> Self {
         Self {
             base: Default::default(),
+            id,
             tag_stream_start,
             tag_stream_pos: 0,
             tag_stream_len,
@@ -299,7 +307,7 @@ impl<'gc> DisplayObject<'gc> for MovieClip<'gc> {
         };
         let _ = tag_utils::decode_tags(&mut reader, tag_callback, TagCode::End);
         if self.audio_stream_info.is_some() {
-            context.audio.preload_sound_stream_end(1);
+            context.audio.preload_sound_stream_end(self.id);
         }
     }
 
@@ -472,11 +480,11 @@ impl<'gc, 'a> MovieClip<'gc> {
         reader: &mut SwfStream<&'a [u8]>,
         tag_len: usize,
     ) -> DecodeResult {
-        if let Some(_) = &self.audio_stream_info {
+        if self.audio_stream_info.is_some() {
             let pos = reader.get_ref().position() as usize;
             let data = reader.get_ref().get_ref();
             let data = &data[pos..pos + tag_len];
-            context.audio.preload_sound_stream_block(1, data);
+            context.audio.preload_sound_stream_block(self.id, data);
         }
 
         Ok(())
@@ -489,7 +497,11 @@ impl<'gc, 'a> MovieClip<'gc> {
         reader: &mut SwfStream<&'a [u8]>,
         _version: u8,
     ) -> DecodeResult {
-        self.audio_stream_info = Some(reader.read_sound_stream_head()?);
+        let audio_stream_info = reader.read_sound_stream_head()?;
+        context
+            .audio
+            .preload_sound_stream_head(self.id, &audio_stream_info);
+        self.audio_stream_info = Some(audio_stream_info);
         Ok(())
     }
 
@@ -666,7 +678,7 @@ impl<'gc, 'a> MovieClip<'gc> {
         let id = reader.read_character_id()?;
         let num_frames = reader.read_u16()?;
         let mut movie_clip =
-            MovieClip::new_with_data(reader.get_ref().position(), tag_len - 4, num_frames);
+            MovieClip::new_with_data(id, reader.get_ref().position(), tag_len - 4, num_frames);
 
         movie_clip.preload(context);
 
@@ -868,7 +880,7 @@ impl<'gc, 'a> MovieClip<'gc> {
                 start: self.tag_stream_start as usize,
                 end: self.tag_stream_start as usize + self.tag_stream_len,
             };
-            let audio_stream = context.audio.start_stream(1, slice, stream_info);
+            let audio_stream = context.audio.start_stream(self.id, slice, stream_info);
             self.audio_stream = Some(audio_stream);
         }
 

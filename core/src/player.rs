@@ -79,7 +79,7 @@ impl Player {
                 library: GcCell::allocate(gc_context, Library::new()),
                 root: GcCell::allocate(
                     gc_context,
-                    MovieClip::new_with_data(0, swf_len, header.num_frames),
+                    MovieClip::new_with_data(0, 0, swf_len, header.num_frames),
                 ),
             }),
 
