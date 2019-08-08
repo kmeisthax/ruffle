@@ -1,6 +1,5 @@
-use super::Decoder;
-
 #[cfg(feature = "minimp3")]
+#[allow(dead_code)]
 pub struct Mp3Decoder<R: std::io::Read> {
     decoder: minimp3::Decoder<R>,
     sample_rate: u32,
@@ -33,29 +32,6 @@ impl<R: std::io::Read> Mp3Decoder<R> {
         self.cur_sample = 0;
     }
 }
-
-// impl<R: std::io::Read> Source for Mp3Decoder<R> {
-//     #[inline]
-//     fn current_frame_len(&self) -> Option<usize> {
-//         None
-//     }
-
-//     #[inline]
-//     fn channels(&self) -> u16 {
-//         self.num_channels
-//     }
-
-//     #[inline]
-//     fn sample_rate(&self) -> u32 {
-//         self.sample_rate
-//     }
-
-//     #[inline]
-//     fn total_duration(&self) -> Option<std::time::Duration> {
-//         // TODO
-//         None
-//     }
-// }
 
 #[cfg(feature = "minimp3")]
 impl<R: std::io::Read> Iterator for Mp3Decoder<R> {
@@ -111,8 +87,7 @@ impl<R: std::io::Read> Mp3Decoder<R> {
     }
 }
 
-#[cfg(all(feature = "puremp3", not(feature = "minimp3")))]
-impl<R: std::io::Read> Decoder for Mp3Decoder<R> {
+impl<R: std::io::Read> super::Decoder for Mp3Decoder<R> {
     #[inline]
     fn num_channels(&self) -> u8 {
         self.num_channels as u8

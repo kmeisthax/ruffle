@@ -155,7 +155,7 @@ impl Player {
                 avm,
                 renderer,
                 audio,
-                action: None,
+                actions: vec![],
                 gc_context,
             };
 
@@ -186,7 +186,7 @@ impl Player {
                 avm,
                 renderer,
                 audio,
-                action: None,
+                actions: vec![],
                 gc_context,
             };
 
@@ -231,7 +231,7 @@ pub struct UpdateContext<'a, 'gc, 'gc_context> {
     pub avm: &'a mut Avm1,
     pub renderer: &'a mut RenderBackend,
     pub audio: &'a mut Audio,
-    pub action: Option<(usize, usize)>,
+    pub actions: Vec<crate::tag_utils::SwfSlice>,
 }
 
 pub struct RenderContext<'a, 'gc> {

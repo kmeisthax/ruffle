@@ -12,9 +12,14 @@ type Error = Box<std::error::Error>;
 
 pub trait AudioBackend {
     fn register_sound(&mut self, swf_sound: &swf::Sound) -> Result<SoundHandle, Error>;
-    fn preload_sound_stream_head(&mut self, clip_id: swf::CharacterId, stream_info: &swf::SoundStreamHead) { }
-    fn preload_sound_stream_block(&mut self, clip_id: swf::CharacterId, audio_data: &[u8]) { }
-    fn preload_sound_stream_end(&mut self, clip_id: swf::CharacterId) { }
+    fn preload_sound_stream_head(
+        &mut self,
+        _clip_id: swf::CharacterId,
+        _stream_info: &swf::SoundStreamHead,
+    ) {
+    }
+    fn preload_sound_stream_block(&mut self, _clip_id: swf::CharacterId, _audio_data: &[u8]) {}
+    fn preload_sound_stream_end(&mut self, _clip_id: swf::CharacterId) {}
     fn play_sound(&mut self, sound: SoundHandle);
     fn start_stream(
         &mut self,
@@ -48,9 +53,9 @@ impl AudioBackend for NullAudioBackend {
 
     fn start_stream(
         &mut self,
-        clip_id: crate::prelude::CharacterId,
-        clip_data: crate::tag_utils::SwfSlice,
-        handle: &swf::SoundStreamHead,
+        _clip_id: crate::prelude::CharacterId,
+        _clip_data: crate::tag_utils::SwfSlice,
+        _handle: &swf::SoundStreamHead,
     ) -> AudioStreamHandle {
         self.streams.insert(())
     }

@@ -24,7 +24,6 @@ pub struct MovieClip<'gc> {
     tag_stream_pos: u64,
     tag_stream_len: usize,
     is_playing: bool,
-    action: Option<(usize, usize)>,
     goto_queue: Vec<FrameNumber>,
     current_frame: FrameNumber,
     total_frames: FrameNumber,
@@ -44,7 +43,6 @@ impl<'gc> MovieClip<'gc> {
             tag_stream_pos: 0,
             tag_stream_len: 0,
             is_playing: true,
-            action: None,
             goto_queue: Vec::new(),
             current_frame: 0,
             total_frames: 1,
@@ -67,7 +65,6 @@ impl<'gc> MovieClip<'gc> {
             tag_stream_pos: 0,
             tag_stream_len,
             is_playing: true,
-            action: None,
             goto_queue: Vec::new(),
             current_frame: 0,
             audio_stream: None,
@@ -169,10 +166,6 @@ impl<'gc> MovieClip<'gc> {
         None
     }
 
-    pub fn action(&self) -> Option<(usize, usize)> {
-        self.action
-    }
-
     pub fn run_goto_queue(&mut self, context: &mut UpdateContext<'_, 'gc, '_>) {
         let mut i = 0;
         while i < self.goto_queue.len() {
@@ -243,8 +236,8 @@ impl<'gc> MovieClip<'gc> {
             };
             let _ = tag_utils::decode_tags(&mut reader, tag_callback, TagCode::ShowFrame);
         } else {
-            let tag_callback = |reader: &mut _, tag_code, _tag_len| match tag_code {
-                TagCode::DoAction => self.do_action(context, reader),
+            let tag_callback = |reader: &mut _, tag_code, tag_len| match tag_code {
+                TagCode::DoAction => self.do_action(context, reader, tag_len),
                 TagCode::PlaceObject => self.place_object(context, reader, 1),
                 TagCode::PlaceObject2 => self.place_object(context, reader, 2),
                 TagCode::PlaceObject3 => self.place_object(context, reader, 3),
@@ -312,8 +305,6 @@ impl<'gc> DisplayObject<'gc> for MovieClip<'gc> {
     }
 
     fn run_frame(&mut self, context: &mut UpdateContext<'_, 'gc, '_>) {
-        self.action = None;
-
         if self.is_playing {
             self.run_frame_internal(context, false);
         }
@@ -744,10 +735,17 @@ impl<'gc, 'a> MovieClip<'gc> {
     #[inline]
     fn do_action(
         &mut self,
-        _context: &mut UpdateContext<'_, 'gc, '_>,
-        _reader: &mut SwfStream<&'a [u8]>,
+        context: &mut UpdateContext<'_, 'gc, '_>,
+        reader: &mut SwfStream<&'a [u8]>,
+        tag_len: usize,
     ) -> DecodeResult {
-        // TODO
+        // Queue the actions.
+        let slice = crate::tag_utils::SwfSlice {
+            data: std::sync::Arc::clone(context.swf_data),
+            start: reader.get_ref().position() as usize,
+            end: reader.get_ref().position() as usize + tag_len,
+        };
+        context.actions.push(slice);
         Ok(())
     }
 
