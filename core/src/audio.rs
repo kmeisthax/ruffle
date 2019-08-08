@@ -22,9 +22,13 @@ impl Audio {
         self.backend.play_sound(sound)
     }
 
-    pub fn preload_sound_stream_head(&mut self, clip_id: swf::CharacterId, stream_info: &swf::SoundStreamHead) {
+    pub fn preload_sound_stream_head(
+        &mut self,
+        clip_id: swf::CharacterId,
+        stream_info: &swf::SoundStreamHead,
+    ) {
         self.backend.preload_sound_stream_head(clip_id, stream_info)
-     }
+    }
 
     pub fn preload_sound_stream_block(&mut self, clip_id: swf::CharacterId, audio_data: &[u8]) {
         self.backend.preload_sound_stream_block(clip_id, audio_data);
@@ -45,5 +49,9 @@ impl Audio {
 
     pub fn stop_all_sounds(&mut self) {
         // TODO(Herschel)
+    }
+
+    pub fn is_loading_complete(&self) -> bool {
+        self.backend.is_loading_complete()
     }
 }

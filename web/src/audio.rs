@@ -3,7 +3,7 @@ use generational_arena::Arena;
 use ruffle_core::backend::audio::decoders::{AdpcmDecoder, Mp3Decoder};
 use ruffle_core::backend::audio::{AudioBackend, AudioStreamHandle, SoundHandle};
 use ruffle_core::backend::audio::swf::{self, AudioCompression};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use wasm_bindgen::{closure::Closure, JsCast};
 use web_sys::AudioContext;
@@ -19,6 +19,7 @@ pub struct WebAudioBackend {
 
 thread_local! {
     static STREAMS: RefCell<Arena<AudioStream>> = RefCell::new(Arena::new());
+    static NUM_SOUNDS_LOADING: Cell<u32> = Cell::new(0);
 }
 
 struct StreamData {
@@ -150,10 +151,25 @@ impl WebAudioBackend {
             return self.decompress_mp3_to_audio_buffer(format, audio_data, num_sample_frames);
         }
 
-        let audio_buffer = self.context.create_buffer(if format.is_stereo { 2 } else { 1 }, num_sample_frames, format.sample_rate.into()).unwrap();
+        // This sucks. Firefox doesn't like 5512Hz sample rate, so manually double up the samples.
+        // 5512Hz should be relatively rare.
+        let audio_buffer = if format.sample_rate > 5512 { 
+            self.context.create_buffer(
+                if format.is_stereo { 2 } else { 1 },
+                num_sample_frames,
+                f32::from(format.sample_rate)
+            ).unwrap()
+        } else {
+            self.context.create_buffer(
+                if format.is_stereo { 2 } else { 1 },
+                num_sample_frames * 2,
+                11025.0
+            ).unwrap()
+        };
 
         match format.compression {
             AudioCompression::Uncompressed => {
+                // TODO: Check for is_16_bit.
                 self.left_samples = audio_data.iter().step_by(2).cloned().map(|n| f32::from(n) / 32767.0).collect();
                 if format.is_stereo {
                     self.right_samples = audio_data.iter().skip(1).step_by(2).cloned().map(|n| f32::from(n) / 32767.0).collect();
@@ -176,6 +192,24 @@ impl WebAudioBackend {
             _ => unimplemented!(),
         }
 
+        // Double up samples for 5512Hz audio to satisfy Firefox.
+        if format.sample_rate == 5512 {
+            let mut samples = Vec::with_capacity(self.left_samples.len() * 2);
+            for sample in &self.left_samples {
+                samples.push(*sample);
+                samples.push(*sample);
+            }
+            self.left_samples = samples;
+
+            if format.is_stereo {
+                let mut samples = Vec::with_capacity(self.right_samples.len() * 2);
+                for sample in &self.right_samples {
+                    samples.push(*sample);
+                    samples.push(*sample);
+                }
+                self.right_samples = samples;
+            }
+        }
 
         audio_buffer.copy_to_channel(&mut self.left_samples, 0).unwrap();
         if format.is_stereo {
@@ -188,27 +222,39 @@ impl WebAudioBackend {
     fn decompress_mp3_to_audio_buffer(&mut self, format: &swf::SoundFormat, audio_data: &[u8], _num_sample_frames: u32) -> AudioBufferPtr {
         // We use the Web decodeAudioData API to decode MP3 data.
         // TODO: Is it possible we finish loading before the MP3 is decoding?
-
         let audio_buffer = self.context.create_buffer(1, 1, self.context.sample_rate()).unwrap();
         let audio_buffer = Rc::new(RefCell::new(audio_buffer));
         
-        let data_array = unsafe { js_sys::Uint8Array::view(&audio_data[2..]) };
+        let data_array = unsafe { js_sys::Uint8Array::view(&audio_data[..]) };
         let array_buffer = data_array.buffer().slice_with_end(
             data_array.byte_offset(),
             data_array.byte_offset() + data_array.byte_length(),
         );
 
+        NUM_SOUNDS_LOADING.with(|n| n.set(n.get() + 1));
+
         let _num_channels = if format.is_stereo { 2 } else { 1 };
         let buffer_ptr = Rc::clone(&audio_buffer);
-        let closure = Closure::wrap(Box::new(move |buffer: web_sys::AudioBuffer| {
+        let success_closure = Closure::wrap(Box::new(move |buffer: web_sys::AudioBuffer| {
             *buffer_ptr.borrow_mut() = buffer;
+            NUM_SOUNDS_LOADING.with(|n| n.set(n.get() - 1));
         })
             as Box<dyn FnMut(web_sys::AudioBuffer)>);
-        self.context.decode_audio_data_with_success_callback(&array_buffer, closure.as_ref().unchecked_ref()).unwrap();
+        let error_closure = Closure::wrap(Box::new(move || {
+            log::info!("Error decoding MP3 audio");
+            NUM_SOUNDS_LOADING.with(|n| n.set(n.get() - 1));
+        })
+            as Box<dyn FnMut()>);
+        self.context.decode_audio_data_with_success_callback_and_error_callback(
+            &array_buffer,
+            success_closure.as_ref().unchecked_ref(),
+            error_closure.as_ref().unchecked_ref()
+        ).unwrap();
 
         // TODO: This will leak memory (once per decompressed MP3).
         // Not a huge deal as there are probably not many MP3s in an SWF.
-        closure.forget();
+        success_closure.forget();
+        error_closure.forget();
 
         audio_buffer
     }
@@ -247,9 +293,16 @@ impl WebAudioBackend {
 
 impl AudioBackend for WebAudioBackend {
     fn register_sound(&mut self, sound: &swf::Sound) -> Result<SoundHandle, Error> {
+        // Slice off latency seek for MP3 data.
+        let data = if sound.format.compression == AudioCompression::Mp3 { 
+            &sound.data[2..]
+        } else {
+            &sound.data[..]
+        };
+
         let sound = Sound {
             format: sound.format.clone(),
-            source: SoundSource::AudioBuffer(self.decompress_to_audio_buffer(&sound.format, &sound.data[..], sound.num_samples)),
+            source: SoundSource::AudioBuffer(self.decompress_to_audio_buffer(&sound.format, data, sound.num_samples)),
         };
         Ok(self.sounds.insert(sound))
     }
@@ -271,15 +324,15 @@ impl AudioBackend for WebAudioBackend {
                 AudioCompression::Uncompressed | AudioCompression::UncompressedUnknownEndian => {
                     let frame_len = if stream.format.is_stereo { 2 } else { 1 } * if stream.format.is_16_bit { 2 } else { 1 };
                     stream.num_sample_frames += (audio_data.len() as u32) / frame_len;
-                    stream.audio_data.extend_from_slice(&audio_data[2..]);
+                    stream.audio_data.extend_from_slice(audio_data);
                 }
                 AudioCompression::Mp3 => {
-                    let num_sample_frames = (u32::from(audio_data[0]) << 8) | u32::from(audio_data[1]);
+                    let num_sample_frames = (u32::from(audio_data[2]) << 8) | u32::from(audio_data[3]);
                     stream.num_sample_frames += num_sample_frames;
-                    // TODO: I think the slice should start from 4?
-                    // 2 bytes for num_samples, 2 bytes for seek_samples
-                    // But this breaks firefox...?
-                    stream.audio_data.extend_from_slice(&audio_data[2..]);
+                    // MP3 streaming data:
+                    // First two bytes = number of samples
+                    // Second two bytes = 'latency seek' (amount to skip when seeking to this frame) 
+                    stream.audio_data.extend_from_slice(&audio_data[4..]);
                 }
                 _ => {
                     // TODO: This is a guess and will vary slightly from block to block!
@@ -315,6 +368,10 @@ impl AudioBackend for WebAudioBackend {
     ) -> AudioStreamHandle {
         let handle = *self.id_to_sound.get(&clip_id).unwrap();
         self.play_sound_internal(handle)
+    }
+
+    fn is_loading_complete(&self) -> bool {
+        NUM_SOUNDS_LOADING.with(|n| n.get() == 0)
     }
 }
 

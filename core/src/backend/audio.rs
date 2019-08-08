@@ -27,6 +27,10 @@ pub trait AudioBackend {
         clip_data: crate::tag_utils::SwfSlice,
         handle: &swf::SoundStreamHead,
     ) -> AudioStreamHandle;
+    // TODO: Eventually remove this/move it to library.
+    fn is_loading_complete(&self) -> bool {
+        true
+    }
     fn tick(&mut self) {}
 }
 

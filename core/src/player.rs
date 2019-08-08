@@ -99,6 +99,12 @@ impl Player {
     }
 
     pub fn tick(&mut self, dt: f64) {
+        // Don't run until preloading is complete.
+        // TODO: Eventually we want to stream content similar to the Flash player.
+        if !self.audio.is_loading_complete() {
+            return;
+        }
+
         self.frame_accumulator += dt;
         self.global_time += dt as u64;
         let frame_time = 1000.0 / self.frame_rate;

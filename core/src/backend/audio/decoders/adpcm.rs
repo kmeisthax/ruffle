@@ -141,11 +141,15 @@ impl<R: Read> AdpcmDecoder<R> {
 impl<R: Read> Iterator for AdpcmDecoder<R> {
     type Item = i16;
     fn next(&mut self) -> Option<i16> {
-        if self.cur_channel >= if self.is_stereo { 1 } else { 2 } {
+        if self.cur_channel >= if self.is_stereo { 2 } else { 1 } {
             self.next_sample().ok()?;
         }
 
-        let sample = if self.cur_channel == 0 { self.left_sample } else { self.right_sample };
+        let sample = if self.cur_channel == 0 {
+            self.left_sample
+        } else {
+            self.right_sample
+        };
         self.cur_channel += 1;
         Some(sample as i16)
     }
@@ -154,7 +158,11 @@ impl<R: Read> Iterator for AdpcmDecoder<R> {
 impl<R: std::io::Read> Decoder for AdpcmDecoder<R> {
     #[inline]
     fn num_channels(&self) -> u8 {
-        if self.is_stereo { 1 } else { 2 }
+        if self.is_stereo {
+            1
+        } else {
+            2
+        }
     }
 
     #[inline]
