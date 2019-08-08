@@ -159,9 +159,9 @@ impl<R: std::io::Read> Decoder for AdpcmDecoder<R> {
     #[inline]
     fn num_channels(&self) -> u8 {
         if self.is_stereo {
-            1
-        } else {
             2
+        } else {
+            1
         }
     }
 
