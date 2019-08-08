@@ -23,6 +23,8 @@ thread_local! {
 struct StreamData {
     format: swf::SoundFormat,
     audio_data: Vec<u8>,
+    num_sample_frames: u32,
+    samples_per_block: u32,
 }
 
 enum SoundSource {
@@ -58,6 +60,7 @@ impl WebAudioBackend {
     }
 
     fn play_sound_internal(&mut self, handle: SoundHandle) -> SoundHandle {
+        log::info!("PLAY");
         let sound = self.sounds.get(handle).unwrap();
         match &sound.source {
             SoundSource::AudioBuffer(audio_buffer) => {
@@ -144,8 +147,9 @@ impl WebAudioBackend {
         }
     }
 
-    fn decompress_to_audio_buffer(&mut self, format: &swf::SoundFormat, audio_data: &[u8]) -> web_sys::AudioBuffer {
-        let audio_buffer = self.context.create_buffer(if format.is_stereo { 2 } else { 1 }, 999, format.sample_rate.into()).unwrap();
+    fn decompress_to_audio_buffer(&mut self, format: &swf::SoundFormat, audio_data: &[u8], num_sample_frames: u32) -> web_sys::AudioBuffer {
+        log::info!("Decode from buffer");
+        let audio_buffer = self.context.create_buffer(if format.is_stereo { 2 } else { 1 }, num_sample_frames, format.sample_rate.into()).unwrap();
 
         match format.compression {
             AudioCompression::Uncompressed => {
@@ -204,6 +208,7 @@ impl WebAudioBackend {
         audio_stream: &mut AudioStream,
         event: web_sys::AudioProcessingEvent,
     ) -> bool {
+        log::info!("USP");
         let mut complete = false;
         let mut left_samples = vec![];
         let mut right_samples = vec![];
@@ -236,39 +241,56 @@ impl AudioBackend for WebAudioBackend {
     fn register_sound(&mut self, sound: &swf::Sound) -> Result<SoundHandle, Error> {
         let sound = Sound {
             format: sound.format.clone(),
-            source: SoundSource::AudioBuffer(self.decompress_to_audio_buffer(&sound.format, &sound.data[..])),
+            source: SoundSource::AudioBuffer(self.decompress_to_audio_buffer(&sound.format, &sound.data[..], sound.num_samples)),
         };
         Ok(self.sounds.insert(sound))
     }
 
     fn preload_sound_stream_head(&mut self, clip_id: swf::CharacterId, stream_info: &swf::SoundStreamHead) {
+        log::info!("START");
         self.stream_data.entry(clip_id).or_insert_with(|| {
             StreamData {
                 format: stream_info.stream_format.clone(),
                 audio_data: vec![],
+                num_sample_frames: 0,
+                samples_per_block: stream_info.num_samples_per_block.into(),
             }
         });
     }
 
     fn preload_sound_stream_block(&mut self, clip_id: swf::CharacterId, audio_data: &[u8]) {
         if let Some(stream) = self.stream_data.get_mut(&clip_id) {
-            if let AudioCompression::Mp3 = stream.format.compression {
-                stream.audio_data.extend_from_slice(&audio_data[4..]);
-            } else {
-                stream.audio_data.extend_from_slice(&audio_data[2..]);
+            match stream.format.compression {
+                AudioCompression::Uncompressed | AudioCompression::UncompressedUnknownEndian => {
+                    let frame_len = if stream.format.is_stereo { 2 } else { 1 } * if stream.format.is_16_bit { 2 } else { 1 };
+                    stream.num_sample_frames += (audio_data.len() as u32) / frame_len;
+                    stream.audio_data.extend_from_slice(&audio_data[2..]);
+                }
+                AudioCompression::Mp3 => {
+                    let num_sample_frames = (u32::from(audio_data[0]) << 8) | u32::from(audio_data[1]);
+                    stream.num_sample_frames += num_sample_frames;
+                    stream.audio_data.extend_from_slice(&audio_data[4..]);
+                }
+                // AudioCompression::Adpcm => {
+                //     let num_sample_frames = audio_data.len() as u32;
+                // }
+                _ => {
+                    stream.num_sample_frames += stream.samples_per_block;
+                }
             }
         }
     }
 
     fn preload_sound_stream_end(&mut self, clip_id: swf::CharacterId) {
         if let Some(stream) = self.stream_data.remove(&clip_id) {
-            let audio_buffer = self.decompress_to_audio_buffer(&stream.format, &stream.audio_data[..]);
+            let audio_buffer = self.decompress_to_audio_buffer(&stream.format, &stream.audio_data[..], 999);
             let handle = self.sounds.insert(Sound {
                 format: stream.format,
                 source: SoundSource::AudioBuffer(audio_buffer),
             });
             self.id_to_sound.insert(clip_id, handle);
         }
+        log::info!("END");
     }
 
     fn play_sound(&mut self, sound: SoundHandle) {
@@ -281,6 +303,7 @@ impl AudioBackend for WebAudioBackend {
         _clip_data: ruffle_core::tag_utils::SwfSlice,
         _stream_info: &swf::SoundStreamHead,
     ) -> AudioStreamHandle {
+        log::info!("SS INTERNAL");
         let handle = *self.id_to_sound.get(&clip_id).unwrap();
         self.play_sound_internal(handle)
     }

@@ -472,10 +472,10 @@ impl<'gc, 'a> MovieClip<'gc> {
         reader: &mut SwfStream<&'a [u8]>,
         tag_len: usize,
     ) -> DecodeResult {
-        if let Some(stream_info) = &self.audio_stream_info {
+        if let Some(_) = &self.audio_stream_info {
             let pos = reader.get_ref().position() as usize;
             let data = reader.get_ref().get_ref();
-            let data = &data[pos..tag_len];
+            let data = &data[pos..pos + tag_len];
             context.audio.preload_sound_stream_block(1, data);
         }
 
@@ -647,7 +647,8 @@ impl<'gc, 'a> MovieClip<'gc> {
     ) -> DecodeResult {
         // TODO(Herschel): Can we use a slice of the sound data instead of copying the data?
         use std::io::Read;
-        let mut reader = swf::read::Reader::new(reader.get_mut().take(tag_len as u64), context.swf_version);
+        let mut reader =
+            swf::read::Reader::new(reader.get_mut().take(tag_len as u64), context.swf_version);
         let sound = reader.read_define_sound()?;
         let handle = context.audio.register_sound(&sound).unwrap();
         context
@@ -867,9 +868,7 @@ impl<'gc, 'a> MovieClip<'gc> {
                 start: self.tag_stream_start as usize,
                 end: self.tag_stream_start as usize + self.tag_stream_len,
             };
-            let audio_stream = context
-                .audio
-                .start_stream(1, slice, stream_info);
+            let audio_stream = context.audio.start_stream(1, slice, stream_info);
             self.audio_stream = Some(audio_stream);
         }
 
