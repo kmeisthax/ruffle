@@ -37,6 +37,7 @@ chrome.storage.sync.get(['ruffle_enable'], async function (data) {
         console.log("Unable to check top-level optout: " + e.message);
     }
     
+    let should_load_untrusted_world = data.ruffle_enable === "on" && !(page_optout || window.RufflePlayer);
     let obfuscated_event_prefix = "rufEvent" + Math.floor(Math.random() * 100000000000);
     let next_response_promise = null;
     let next_response_promise_resolve = null;
@@ -86,17 +87,28 @@ chrome.storage.sync.get(['ruffle_enable'], async function (data) {
     }
     
     chrome.runtime.onMessage.addListener(function (request, sender, response_callback) {
-        let response_promise = marshal_message_into_untrusted_world(request);
-        response_promise.then(function (response) {
-            response_callback(response);
-        }).catch(function(e) {
-            console.error("Error when marshalling tab message into untrusted world: " + e);
-            throw e;
-        });
+        if (should_load_untrusted_world) {
+            let response_promise = marshal_message_into_untrusted_world(request);
+            response_promise.then(function (response) {
+                response_callback({
+                    "loaded": true,
+                    "data": data,
+                    "untrusted_response": response
+                });
+            }).catch(function(e) {
+                console.error("Error when marshalling tab message into untrusted world: " + e);
+                throw e;
+            });
 
-        return response_promise;
+            return response_promise;
+        } else {
+            response_callback({
+                "loaded": false,
+                "data": data
+            });
+        }
     });
-    
+
     let ext_path = "";
     if (chrome && chrome.extension && chrome.extension.getURL) {
         ext_path = chrome.extension
@@ -107,7 +119,8 @@ chrome.storage.sync.get(['ruffle_enable'], async function (data) {
             .getURL("dist/ruffle.js")
             .replace("dist/ruffle.js", "");
     }
-    if (data.ruffle_enable === "on" && !(page_optout || window.RufflePlayer)) {
+    
+    if (should_load_untrusted_world) {
         let setup_scriptelem = document.createElement("script");
         let setup_src =
             'var runtime_path = "' +
@@ -119,16 +132,16 @@ chrome.storage.sync.get(['ruffle_enable'], async function (data) {
         let scriptelem = document.createElement("script");
         setup_scriptelem.innerHTML = setup_src;
         /* The setup_scriptelem sets runtime_path & obfuscated_event_prefix *
-         * and runs the plugin polyfill, which must run before any flash      *
-         * detection scripts.                                                 */
+        * and runs the plugin polyfill, which must run before any flash      *
+        * detection scripts.                                                 */
         (document.head || document.documentElement).appendChild(setup_scriptelem);
         window.RufflePlayer = {};
         window.RufflePlayer.config = {
             public_path: ext_path + "dist/",
             polyfills: ["static-content", "dynamic-content"],
             /* We only want "static-content" & "dynamic-content" because we *
-             * inject the plugin polyfill above & use all_frames in         *
-             * manifest.json for (i)frames.                                 */
+            * inject the plugin polyfill above & use all_frames in         *
+            * manifest.json for (i)frames.                                 */
         };
         scriptelem.src = ext_path + "dist/ruffle.js";
         (document.head || document.documentElement).appendChild(scriptelem);
