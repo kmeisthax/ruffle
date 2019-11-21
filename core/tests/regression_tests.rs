@@ -61,8 +61,17 @@ swf_tests! {
     (root_global_parent, "avm1/root_global_parent", 3),
     (register_underflow, "avm1/register_underflow", 1),
 #[ignore]    (string_coercion, "avm1/string_coercion", 1),
-    (lessthan_swf6, "avm1/lessthan_swf6", 1),
-    (lessthan_swf7, "avm1/lessthan_swf7", 1),
+    (lessthan_swf4, "avm1/lessthan_swf4", 1),
+    (lessthan2_swf5, "avm1/lessthan2_swf5", 1),
+    (lessthan2_swf6, "avm1/lessthan2_swf6", 1),
+    (lessthan2_swf7, "avm1/lessthan2_swf7", 1),
+    (greater_swf6, "avm1/greater_swf6", 1),
+    (greater_swf7, "avm1/greater_swf7", 1),
+    (equals_swf4, "avm1/equals_swf4", 1),
+    (equals2_swf5, "avm1/equals2_swf5", 1),
+    (equals2_swf6, "avm1/equals2_swf6", 1),
+    (equals2_swf7, "avm1/equals2_swf7", 1),
+    (strictequals_swf6, "avm1/strictequals_swf6", 1),
 }
 
 /// Loads an SWF and runs it through the Ruffle core for a number of frames.
@@ -84,13 +93,7 @@ fn test_swf(swf_path: &str, num_frames: u32, expected_output_path: &str) -> Resu
     }
 
     let trace_log = trace_log();
-    if trace_log != expected_output {
-        println!(
-            "Ruffle output:\n{}\nExpected output:\n{}",
-            trace_log, expected_output
-        );
-        panic!("Ruffle output did not match expected output.");
-    }
+    assert_eq!(expected_output, trace_log, "expected_output == trace_log");
 
     Ok(())
 }
