@@ -1,10 +1,12 @@
 use crate::avm1::fscommand;
+use crate::avm1::function::Executable;
 use crate::avm1::return_value::ReturnValue;
 use crate::avm1::{Avm1, Error, Object, UpdateContext, Value};
 use crate::backend::navigator::NavigationMethod;
 use enumset::EnumSet;
 use gc_arena::{GcCell, MutationContext};
 use rand::Rng;
+use std::f64;
 
 mod math;
 
@@ -88,6 +90,32 @@ pub fn is_nan<'gc>(
     }
 }
 
+pub fn get_infinity<'gc>(
+    avm: &mut Avm1<'gc>,
+    _action_context: &mut UpdateContext<'_, 'gc, '_>,
+    _this: GcCell<'gc, Object<'gc>>,
+    _args: &[Value<'gc>],
+) -> Result<ReturnValue<'gc>, Error> {
+    if avm.current_swf_version() > 4 {
+        return Ok(f64::INFINITY.into());
+    } else {
+        return Ok(Value::Undefined.into());
+    }
+}
+
+pub fn get_nan<'gc>(
+    avm: &mut Avm1<'gc>,
+    _action_context: &mut UpdateContext<'_, 'gc, '_>,
+    _this: GcCell<'gc, Object<'gc>>,
+    _args: &[Value<'gc>],
+) -> Result<ReturnValue<'gc>, Error> {
+    if avm.current_swf_version() > 4 {
+        return Ok(f64::NAN.into());
+    } else {
+        return Ok(Value::Undefined.into());
+    }
+}
+
 pub fn create_globals<'gc>(gc_context: MutationContext<'gc, '_>) -> Object<'gc> {
     let mut globals = Object::object(gc_context);
 
@@ -98,10 +126,11 @@ pub fn create_globals<'gc>(gc_context: MutationContext<'gc, '_>) -> Object<'gc> 
     globals.force_set_function("Number", number, gc_context, EnumSet::empty());
     globals.force_set_function("random", random, gc_context, EnumSet::empty());
 
-    globals.force_set("NaN", Value::Number(std::f64::NAN), EnumSet::empty());
-    globals.force_set(
+    globals.force_set_virtual("NaN", Executable::Native(get_nan), None, EnumSet::empty());
+    globals.force_set_virtual(
         "Infinity",
-        Value::Number(std::f64::INFINITY),
+        Executable::Native(get_infinity),
+        None,
         EnumSet::empty(),
     );
 
