@@ -93,7 +93,7 @@ fn test_swf(swf_path: &str, num_frames: u32, expected_output_path: &str) -> Resu
     }
 
     let trace_log = trace_log();
-    assert_eq!(expected_output, trace_log, "expected_output == trace_log");
+    assert_eq!(trace_log, expected_output, "actual == expected");
 
     Ok(())
 }
