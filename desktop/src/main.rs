@@ -22,7 +22,7 @@ use ruffle_core::{
     backend::audio::{AudioBackend, NullAudioBackend},
     Player,
 };
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 use structopt::StructOpt;
 
@@ -69,7 +69,9 @@ fn run_player(input_path: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     };
     let renderer = Box::new(GliumRenderBackend::new(windowed_context)?);
     let (executor, chan) = GlutinAsyncExecutor::new(event_loop.create_proxy());
+    let base_path = Path::new(&input_path).parent().unwrap();
     let navigator = Box::new(navigator::ExternalNavigatorBackend::new(
+        base_path,
         chan,
         event_loop.create_proxy(),
     )); //TODO: actually implement this backend type
