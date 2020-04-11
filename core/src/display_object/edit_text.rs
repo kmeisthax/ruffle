@@ -2,6 +2,7 @@
 use crate::avm1::globals::text_field::attach_virtual_properties;
 use crate::avm1::{Avm1, Object, StageObject, Value};
 use crate::context::{RenderContext, UpdateContext};
+use crate::css::CSSStylesheet;
 use crate::display_object::{DisplayObjectBase, TDisplayObject};
 use crate::drawing::Drawing;
 use crate::font::{round_down_to_pixel, Glyph};
@@ -67,6 +68,9 @@ pub struct EditTextData<'gc> {
     /// It is lowered further into layout boxes, which are used for actual
     /// rendering.
     text_spans: FormatSpans,
+
+    /// The current stylesheet applied to this `EditText`.
+    stylesheet: Option<CSSStylesheet>,
 
     /// If the text is in multi-line mode or single-line mode.
     is_multiline: bool,
@@ -152,6 +156,7 @@ impl<'gc> EditText<'gc> {
                 base,
                 document,
                 text_spans,
+                stylesheet: None,
                 static_data: gc_arena::Gc::allocate(
                     context.gc_context,
                     EditTextStatic {
