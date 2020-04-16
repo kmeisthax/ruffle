@@ -2062,6 +2062,10 @@ impl<'gc> Avm1<'gc> {
 
         let this = prototype.new(self, context, prototype, &args)?;
 
+        if self.current_swf_version() < 7 {
+            this.set("constructor", constructor.into(), self, context)?;
+        }
+
         //TODO: What happens if you `ActionNewMethod` without a method name?
         constructor
             .call(self, context, this, None, &args)?
@@ -2099,6 +2103,11 @@ impl<'gc> Avm1<'gc> {
                     .as_object()
                 {
                     let this = prototype.new(self, context, prototype, &args)?;
+
+                    if self.current_swf_version() < 7 {
+                        this.set("constructor", constructor.into(), self, context)?;
+                    }
+
                     constructor
                         .call(self, context, this, None, &args)?
                         .resolve(self, context)?;
