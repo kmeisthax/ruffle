@@ -36,9 +36,10 @@ pub fn get_code<'gc>(
 pub fn create_key_object<'gc>(
     gc_context: MutationContext<'gc, '_>,
     proto: Option<Object<'gc>>,
+    constr: Option<Object<'gc>>,
     fn_proto: Option<Object<'gc>>,
 ) -> Object<'gc> {
-    let mut key = ScriptObject::object(gc_context, proto);
+    let mut key = ScriptObject::object(gc_context, proto, constr);
 
     key.define_value(
         gc_context,

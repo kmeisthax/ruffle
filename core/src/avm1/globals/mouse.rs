@@ -38,10 +38,11 @@ pub fn hide_mouse<'gc>(
 pub fn create_mouse_object<'gc>(
     gc_context: MutationContext<'gc, '_>,
     proto: Option<Object<'gc>>,
+    constr: Option<Object<'gc>>,
     fn_proto: Option<Object<'gc>>,
     listener: &Listeners<'gc>,
 ) -> Object<'gc> {
-    let mut mouse = ScriptObject::object(gc_context, proto);
+    let mut mouse = ScriptObject::object(gc_context, proto, constr);
 
     register_listener!(gc_context, mouse, listener, fn_proto, mouse);
 

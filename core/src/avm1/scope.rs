@@ -56,7 +56,7 @@ impl<'gc> Scope<'gc> {
         Scope {
             parent: Some(parent),
             class: ScopeClass::Local,
-            values: ScriptObject::object_cell(mc, None),
+            values: ScriptObject::object_cell(mc, None, None),
         }
     }
 
@@ -109,7 +109,7 @@ impl<'gc> Scope<'gc> {
                 Self {
                     parent: None,
                     class: ScopeClass::Global,
-                    values: ScriptObject::object_cell(mc, None),
+                    values: ScriptObject::object_cell(mc, None, None),
                 },
             )
         })
@@ -163,7 +163,7 @@ impl<'gc> Scope<'gc> {
                 Self {
                     parent: None,
                     class: ScopeClass::Global,
-                    values: ScriptObject::object_cell(mc, None),
+                    values: ScriptObject::object_cell(mc, None, None),
                 },
             )
         })

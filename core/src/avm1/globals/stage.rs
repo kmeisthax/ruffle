@@ -11,10 +11,11 @@ use gc_arena::MutationContext;
 pub fn create_stage_object<'gc>(
     gc_context: MutationContext<'gc, '_>,
     proto: Option<Object<'gc>>,
+    constr: Option<Object<'gc>>,
     _array_proto: Option<Object<'gc>>,
     fn_proto: Option<Object<'gc>>,
 ) -> Object<'gc> {
-    let mut stage = ScriptObject::object(gc_context, proto);
+    let mut stage = ScriptObject::object(gc_context, proto, constr);
 
     stage.force_set_function(
         "addListener",

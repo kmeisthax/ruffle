@@ -439,6 +439,7 @@ impl<'gc> TDisplayObject<'gc> for EditText<'gc> {
                 context.gc_context,
                 display_object,
                 Some(context.system_prototypes.text_field),
+                Some(context.system_constructors.text_field),
             )
             .into();
 

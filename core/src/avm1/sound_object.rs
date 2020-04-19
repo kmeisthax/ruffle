@@ -61,11 +61,12 @@ impl<'gc> SoundObject<'gc> {
     pub fn empty_sound(
         gc_context: MutationContext<'gc, '_>,
         proto: Option<Object<'gc>>,
+        constr: Option<Object<'gc>>,
     ) -> SoundObject<'gc> {
         SoundObject(GcCell::allocate(
             gc_context,
             SoundObjectData {
-                base: ScriptObject::object(gc_context, proto),
+                base: ScriptObject::object(gc_context, proto, constr),
                 sound: None,
                 sound_instance: None,
                 owner: None,
@@ -178,8 +179,14 @@ impl<'gc> TObject<'gc> for SoundObject<'gc> {
         context: &mut UpdateContext<'_, 'gc, '_>,
         _this: Object<'gc>,
         _args: &[Value<'gc>],
+        _constructor: Object<'gc>,
     ) -> Result<Object<'gc>, Error> {
-        Ok(SoundObject::empty_sound(context.gc_context, Some(avm.prototypes.sound)).into())
+        Ok(SoundObject::empty_sound(
+            context.gc_context,
+            Some(avm.prototypes.sound),
+            Some(avm.constructors.sound),
+        )
+        .into())
     }
 
     fn delete(
@@ -197,6 +204,10 @@ impl<'gc> TObject<'gc> for SoundObject<'gc> {
 
     fn set_proto(&self, gc_context: MutationContext<'gc, '_>, prototype: Option<Object<'gc>>) {
         self.base().set_proto(gc_context, prototype);
+    }
+
+    fn constr(&self) -> Option<Object<'gc>> {
+        self.base().constr()
     }
 
     fn define_value(

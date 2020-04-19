@@ -1,5 +1,6 @@
 //! Function prototype
 
+use crate::avm1::function::{Executable, FunctionObject};
 use crate::avm1::return_value::ReturnValue;
 use crate::avm1::{Avm1, Error, Object, ScriptObject, TObject, UpdateContext, Value};
 use enumset::EnumSet;
@@ -93,7 +94,7 @@ fn to_string<'gc>(
 /// returned object is also a bare object, which will need to be linked into
 /// the prototype of `Object`.
 pub fn create_proto<'gc>(gc_context: MutationContext<'gc, '_>, proto: Object<'gc>) -> Object<'gc> {
-    let function_proto = ScriptObject::object_cell(gc_context, Some(proto));
+    let function_proto = ScriptObject::object_cell(gc_context, Some(proto), None);
     let this = Some(function_proto);
     function_proto
         .as_script_object()
@@ -109,4 +110,25 @@ pub fn create_proto<'gc>(gc_context: MutationContext<'gc, '_>, proto: Object<'gc
         .force_set_function("toString", to_string, gc_context, EnumSet::empty(), this);
 
     function_proto
+}
+
+pub fn finish_function_object<'gc>(
+    gc_context: MutationContext<'gc, '_>,
+    function_proto: Object<'gc>,
+    constr: Object<'gc>,
+) -> Object<'gc> {
+    function_proto
+        .as_script_object()
+        .unwrap()
+        .set_constr(gc_context, constr);
+
+    let function = FunctionObject::function(
+        gc_context,
+        Executable::Native(constructor),
+        Some(function_proto),
+        None,
+        Some(function_proto),
+    );
+
+    function
 }

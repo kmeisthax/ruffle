@@ -1,6 +1,6 @@
 //! XML/XMLNode global classes
 
-use crate::avm1::function::Executable;
+use crate::avm1::function::{Executable, FunctionObject};
 use crate::avm1::property::Attribute::*;
 use crate::avm1::return_value::ReturnValue;
 use crate::avm1::script_object::ScriptObject;
@@ -123,9 +123,11 @@ pub fn xmlnode_clone_node<'gc>(
     ) {
         let mut clone_node = xmlnode.duplicate(ac.gc_context, deep);
 
-        return Ok(Value::Object(
-            clone_node.script_object(ac.gc_context, Some(avm.prototypes.xml_node)),
-        )
+        return Ok(Value::Object(clone_node.script_object(
+            ac.gc_context,
+            Some(avm.prototypes.xml_node),
+            Some(avm.constructors.xml_node),
+        ))
         .into());
     }
 
@@ -305,7 +307,11 @@ pub fn xmlnode_child_nodes<'gc>(
     _args: &[Value<'gc>],
 ) -> Result<ReturnValue<'gc>, Error> {
     if let Some(node) = this.as_xml_node() {
-        let array = ScriptObject::array(ac.gc_context, Some(avm.prototypes.array));
+        let array = ScriptObject::array(
+            ac.gc_context,
+            Some(avm.prototypes.array),
+            avm.prototypes.array.constr(),
+        );
         if let Some(children) = node.children() {
             let mut compatible_nodes = 0;
             for mut child in children {
@@ -316,7 +322,11 @@ pub fn xmlnode_child_nodes<'gc>(
                 array.set_array_element(
                     compatible_nodes as usize,
                     child
-                        .script_object(ac.gc_context, Some(avm.prototypes.xml_node))
+                        .script_object(
+                            ac.gc_context,
+                            Some(avm.prototypes.xml_node),
+                            Some(avm.constructors.xml_node),
+                        )
                         .into(),
                     ac.gc_context,
                 );
@@ -343,7 +353,11 @@ pub fn xmlnode_first_child<'gc>(
                 .next()
                 .map(|mut child| {
                     child
-                        .script_object(ac.gc_context, Some(avm.prototypes.xml_node))
+                        .script_object(
+                            ac.gc_context,
+                            Some(avm.prototypes.xml_node),
+                            Some(avm.constructors.xml_node),
+                        )
                         .into()
                 })
                 .unwrap_or_else(|| Value::Null.into()));
@@ -365,7 +379,11 @@ pub fn xmlnode_last_child<'gc>(
                 .next_back()
                 .map(|mut child| {
                     child
-                        .script_object(ac.gc_context, Some(avm.prototypes.xml_node))
+                        .script_object(
+                            ac.gc_context,
+                            Some(avm.prototypes.xml_node),
+                            Some(avm.constructors.xml_node),
+                        )
                         .into()
                 })
                 .unwrap_or_else(|| Value::Null.into()));
@@ -387,7 +405,11 @@ pub fn xmlnode_parent_node<'gc>(
             .unwrap_or(None)
             .map(|mut parent| {
                 parent
-                    .script_object(ac.gc_context, Some(avm.prototypes.xml_node))
+                    .script_object(
+                        ac.gc_context,
+                        Some(avm.prototypes.xml_node),
+                        Some(avm.constructors.xml_node),
+                    )
                     .into()
             })
             .unwrap_or_else(|| Value::Null.into()));
@@ -414,8 +436,12 @@ pub fn xmlnode_previous_sibling<'gc>(
 
         return Ok(prev
             .map(|mut prev| {
-                prev.script_object(ac.gc_context, Some(avm.prototypes.xml_node))
-                    .into()
+                prev.script_object(
+                    ac.gc_context,
+                    Some(avm.prototypes.xml_node),
+                    Some(avm.constructors.xml_node),
+                )
+                .into()
             })
             .unwrap_or_else(|| Value::Null.into()));
     }
@@ -441,8 +467,12 @@ pub fn xmlnode_next_sibling<'gc>(
 
         return Ok(next
             .map(|mut next| {
-                next.script_object(ac.gc_context, Some(avm.prototypes.xml_node))
-                    .into()
+                next.script_object(
+                    ac.gc_context,
+                    Some(avm.prototypes.xml_node),
+                    Some(avm.constructors.xml_node),
+                )
+                .into()
             })
             .unwrap_or_else(|| Value::Null.into()));
     }
@@ -490,9 +520,11 @@ pub fn xmlnode_namespace_uri<'gc>(
 pub fn create_xmlnode_proto<'gc>(
     gc_context: MutationContext<'gc, '_>,
     proto: Object<'gc>,
+    constr: Object<'gc>,
     fn_proto: Object<'gc>,
-) -> Object<'gc> {
-    let xmlnode_proto = XMLObject::empty_node(gc_context, Some(proto));
+    fn_constr: Object<'gc>,
+) -> (Object<'gc>, Object<'gc>) {
+    let xmlnode_proto = XMLObject::empty_node(gc_context, Some(proto), Some(constr));
 
     xmlnode_proto.add_property(
         gc_context,
@@ -666,7 +698,15 @@ pub fn create_xmlnode_proto<'gc>(
             Some(fn_proto),
         );
 
-    xmlnode_proto
+    let xml_node = FunctionObject::function(
+        gc_context,
+        Executable::Native(xmlnode_constructor),
+        Some(fn_proto),
+        Some(fn_constr),
+        Some(xmlnode_proto),
+    );
+
+    (xml_node, xmlnode_proto)
 }
 
 /// XML (document) constructor
@@ -718,7 +758,12 @@ pub fn xml_create_element<'gc>(
         .map(|v| v.clone().coerce_to_string(avm, ac).unwrap_or_default())
         .unwrap_or_default();
     let mut xml_node = XMLNode::new_element(ac.gc_context, &nodename, document)?;
-    let object = XMLObject::from_xml_node(ac.gc_context, xml_node, Some(avm.prototypes().xml_node));
+    let object = XMLObject::from_xml_node(
+        ac.gc_context,
+        xml_node,
+        Some(avm.prototypes().xml_node),
+        Some(avm.constructors().xml_node),
+    );
 
     xml_node.introduce_script_object(ac.gc_context, object);
 
@@ -742,7 +787,12 @@ pub fn xml_create_text_node<'gc>(
         .map(|v| v.clone().coerce_to_string(avm, ac).unwrap_or_default())
         .unwrap_or_default();
     let mut xml_node = XMLNode::new_text(ac.gc_context, &text_node, document);
-    let object = XMLObject::from_xml_node(ac.gc_context, xml_node, Some(avm.prototypes().xml_node));
+    let object = XMLObject::from_xml_node(
+        ac.gc_context,
+        xml_node,
+        Some(avm.prototypes().xml_node),
+        Some(avm.constructors().xml_node),
+    );
 
     xml_node.introduce_script_object(ac.gc_context, object);
 
@@ -934,9 +984,11 @@ pub fn xml_status<'gc>(
 pub fn create_xml_proto<'gc>(
     gc_context: MutationContext<'gc, '_>,
     proto: Object<'gc>,
+    constr: Object<'gc>,
     fn_proto: Object<'gc>,
-) -> Object<'gc> {
-    let xml_proto = XMLObject::empty_node(gc_context, Some(proto));
+    fn_constr: Object<'gc>,
+) -> (Object<'gc>, Object<'gc>) {
+    let xml_proto = XMLObject::empty_node(gc_context, Some(proto), Some(constr));
 
     xml_proto.add_property(
         gc_context,
@@ -1002,5 +1054,13 @@ pub fn create_xml_proto<'gc>(
         Some(fn_proto),
     );
 
-    xml_proto
+    let xml = FunctionObject::function(
+        gc_context,
+        Executable::Native(xml_constructor),
+        Some(fn_proto),
+        Some(fn_constr),
+        Some(xml_proto),
+    );
+
+    (xml, xml_proto)
 }

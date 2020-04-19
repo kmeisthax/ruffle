@@ -31,27 +31,49 @@ pub fn number<'gc>(
     Ok(value.into())
 }
 
-pub fn create_number_object<'gc>(
+/// Creates `Number.prototype`.
+pub fn create_proto<'gc>(
     gc_context: MutationContext<'gc, '_>,
-    number_proto: Option<Object<'gc>>,
-    fn_proto: Option<Object<'gc>>,
-) -> Object<'gc> {
+    proto: Object<'gc>,
+    constr: Object<'gc>,
+    fn_proto: Object<'gc>,
+    fn_constr: Object<'gc>,
+) -> (Object<'gc>, Object<'gc>) {
+    let number_proto = ValueObject::empty_box(gc_context, Some(proto), Some(constr));
+    let mut np_object = number_proto.as_script_object().unwrap();
+
+    np_object.force_set_function(
+        "toString",
+        to_string,
+        gc_context,
+        EnumSet::empty(),
+        Some(fn_proto),
+    );
+    np_object.force_set_function(
+        "valueOf",
+        value_of,
+        gc_context,
+        EnumSet::empty(),
+        Some(fn_proto),
+    );
+
     let number = FunctionObject::function(
         gc_context,
         Executable::Native(number),
-        fn_proto,
-        number_proto,
+        Some(fn_proto),
+        Some(fn_constr),
+        Some(number_proto),
     );
-    let object = number.as_script_object().unwrap();
+    let n_object = number.as_script_object().unwrap();
 
-    object.define_value(
+    n_object.define_value(
         gc_context,
         "MAX_VALUE",
         std::f64::MAX.into(),
         DontDelete | ReadOnly | DontEnum,
     );
 
-    object.define_value(
+    n_object.define_value(
         gc_context,
         "MIN_VALUE",
         // Note this is actually the smallest positive denormalized f64.
@@ -60,55 +82,28 @@ pub fn create_number_object<'gc>(
         DontDelete | ReadOnly | DontEnum,
     );
 
-    object.define_value(
+    n_object.define_value(
         gc_context,
         "NaN",
         std::f64::NAN.into(),
         DontDelete | ReadOnly | DontEnum,
     );
 
-    object.define_value(
+    n_object.define_value(
         gc_context,
         "NEGATIVE_INFINITY",
         std::f64::NEG_INFINITY.into(),
         DontDelete | ReadOnly | DontEnum,
     );
 
-    object.define_value(
+    n_object.define_value(
         gc_context,
         "POSITIVE_INFINITY",
         std::f64::INFINITY.into(),
         DontDelete | ReadOnly | DontEnum,
     );
 
-    number
-}
-
-/// Creates `Number.prototype`.
-pub fn create_proto<'gc>(
-    gc_context: MutationContext<'gc, '_>,
-    proto: Object<'gc>,
-    fn_proto: Object<'gc>,
-) -> Object<'gc> {
-    let number_proto = ValueObject::empty_box(gc_context, Some(proto));
-    let mut object = number_proto.as_script_object().unwrap();
-
-    object.force_set_function(
-        "toString",
-        to_string,
-        gc_context,
-        EnumSet::empty(),
-        Some(fn_proto),
-    );
-    object.force_set_function(
-        "valueOf",
-        value_of,
-        gc_context,
-        EnumSet::empty(),
-        Some(fn_proto),
-    );
-
-    number_proto
+    (number, number_proto)
 }
 
 fn to_string<'gc>(

@@ -26,7 +26,7 @@ impl<'gc> XMLIDMapObject<'gc> {
         gc_context: MutationContext<'gc, '_>,
         xml_doc: XMLDocument<'gc>,
     ) -> Object<'gc> {
-        XMLIDMapObject(ScriptObject::object(gc_context, None), xml_doc).into()
+        XMLIDMapObject(ScriptObject::object(gc_context, None, None), xml_doc).into()
     }
 
     fn base(&self) -> ScriptObject<'gc> {
@@ -64,7 +64,11 @@ impl<'gc> TObject<'gc> for XMLIDMapObject<'gc> {
     ) -> Result<ReturnValue<'gc>, Error> {
         if let Some(mut node) = self.document().get_node_by_id(name) {
             Ok(node
-                .script_object(context.gc_context, Some(avm.prototypes().xml_node))
+                .script_object(
+                    context.gc_context,
+                    Some(avm.prototypes().xml_node),
+                    Some(avm.constructors().xml_node),
+                )
                 .into())
         } else {
             self.base().get_local(name, avm, context, this)
@@ -110,6 +114,7 @@ impl<'gc> TObject<'gc> for XMLIDMapObject<'gc> {
         _context: &mut UpdateContext<'_, 'gc, '_>,
         _this: Object<'gc>,
         _args: &[Value<'gc>],
+        _constructor: Object<'gc>,
     ) -> Result<Object<'gc>, Error> {
         //TODO: `new xmlnode.attributes()` returns undefined, not an object
         Err("Cannot create new XML Attributes object".into())
@@ -177,6 +182,10 @@ impl<'gc> TObject<'gc> for XMLIDMapObject<'gc> {
 
     fn set_proto(&self, gc_context: MutationContext<'gc, '_>, prototype: Option<Object<'gc>>) {
         self.base().set_proto(gc_context, prototype);
+    }
+
+    fn constr(&self) -> Option<Object<'gc>> {
+        self.base().constr()
     }
 
     fn has_property(

@@ -653,6 +653,7 @@ impl<'gc> TDisplayObject<'gc> for MovieClip<'gc> {
                         context.gc_context,
                         (*self).into(),
                         Some(prototype),
+                        Some(constructor),
                     )
                     .into();
                     self.0.write(context.gc_context).object = Some(object);
@@ -668,6 +669,7 @@ impl<'gc> TDisplayObject<'gc> for MovieClip<'gc> {
                 context.gc_context,
                 display_object,
                 Some(context.system_prototypes.movie_clip),
+                Some(context.system_constructors.movie_clip),
             );
             mc.object = Some(object.into());
 

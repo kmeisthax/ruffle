@@ -47,7 +47,7 @@ mod tests;
 
 use crate::avm1::listeners::SystemListener;
 pub use activation::Activation;
-pub use globals::SystemPrototypes;
+pub use globals::{SystemConstructors, SystemPrototypes};
 pub use object::{Object, ObjectPtr, TObject};
 use scope::Scope;
 pub use script_object::ScriptObject;
@@ -73,8 +73,13 @@ pub struct Avm1<'gc> {
     /// The global object.
     globals: Object<'gc>,
 
-    /// System builtins that we use internally to construct new objects.
+    /// System builtin prototypes that we use internally to construct new
+    /// objects.
     prototypes: globals::SystemPrototypes<'gc>,
+
+    /// System builtin constructors that we use internally to construct new
+    /// objects.
+    constructors: globals::SystemConstructors<'gc>,
 
     /// System event listeners that will respond to native events (Mouse, Key, etc)
     system_listeners: listeners::SystemListeners<'gc>,
@@ -114,13 +119,14 @@ type Error = Box<dyn std::error::Error>;
 
 impl<'gc> Avm1<'gc> {
     pub fn new(gc_context: MutationContext<'gc, '_>, player_version: u8) -> Self {
-        let (prototypes, globals, system_listeners) = create_globals(gc_context);
+        let (prototypes, constructors, globals, system_listeners) = create_globals(gc_context);
 
         Self {
             player_version,
             constant_pool: GcCell::allocate(gc_context, vec![]),
             globals,
             prototypes,
+            constructors,
             system_listeners,
             display_properties: stage_object::DisplayPropertyMap::new(gc_context),
             stack_frames: vec![],
@@ -1366,12 +1372,17 @@ impl<'gc> Avm1<'gc> {
             constant_pool,
             self.target_clip_or_root(),
         );
-        let prototype =
-            ScriptObject::object(context.gc_context, Some(self.prototypes.object)).into();
+        let prototype = ScriptObject::object(
+            context.gc_context,
+            Some(self.prototypes.object),
+            Some(self.constructors.object),
+        )
+        .into();
         let func_obj = FunctionObject::function(
             context.gc_context,
             func,
             Some(self.prototypes.function),
+            Some(self.constructors.function),
             Some(prototype),
         );
         if name == "" {
@@ -1412,12 +1423,17 @@ impl<'gc> Avm1<'gc> {
             constant_pool,
             self.base_clip(),
         );
-        let prototype =
-            ScriptObject::object(context.gc_context, Some(self.prototypes.object)).into();
+        let prototype = ScriptObject::object(
+            context.gc_context,
+            Some(self.prototypes.object),
+            Some(self.constructors.object),
+        )
+        .into();
         let func_obj = FunctionObject::function(
             context.gc_context,
             func,
             Some(self.prototypes.function),
+            Some(self.constructors.function),
             Some(prototype),
         );
         if action_func.name == "" {
@@ -1587,7 +1603,7 @@ impl<'gc> Avm1<'gc> {
             .unwrap_or(self.prototypes.object);
 
         let sub_prototype: Object<'gc> =
-            ScriptObject::object(context.gc_context, Some(super_proto)).into();
+            ScriptObject::object(context.gc_context, Some(super_proto), Some(superclass)).into();
 
         sub_prototype.set("constructor", superclass.into(), self, context)?;
         subclass.set("prototype", sub_prototype.into(), self, context)?;
@@ -1658,6 +1674,11 @@ impl<'gc> Avm1<'gc> {
     /// Obtain system built-in prototypes for this instance.
     pub fn prototypes(&self) -> &globals::SystemPrototypes<'gc> {
         &self.prototypes
+    }
+
+    /// Obtain system built-in constructors for this instance.
+    pub fn constructors(&self) -> &globals::SystemConstructors<'gc> {
+        &self.constructors
     }
 
     fn action_get_variable(
@@ -1878,7 +1899,11 @@ impl<'gc> Avm1<'gc> {
 
     fn action_init_array(&mut self, context: &mut UpdateContext<'_, 'gc, '_>) -> Result<(), Error> {
         let num_elements = self.pop().as_i64()?;
-        let array = ScriptObject::array(context.gc_context, Some(self.prototypes.array));
+        let array = ScriptObject::array(
+            context.gc_context,
+            Some(self.prototypes.array),
+            Some(self.constructors.array),
+        );
 
         for i in 0..num_elements {
             array.set_array_element(i as usize, self.pop(), context.gc_context);
@@ -1893,7 +1918,11 @@ impl<'gc> Avm1<'gc> {
         context: &mut UpdateContext<'_, 'gc, '_>,
     ) -> Result<(), Error> {
         let num_props = self.pop().as_i64()?;
-        let object = ScriptObject::object(context.gc_context, Some(self.prototypes.object));
+        let object = ScriptObject::object(
+            context.gc_context,
+            Some(self.prototypes.object),
+            Some(self.constructors.object),
+        );
         for _ in 0..num_props {
             let value = self.pop();
             let name = self.pop().into_string(self.current_swf_version());
@@ -2075,7 +2104,7 @@ impl<'gc> Avm1<'gc> {
             .resolve(self, context)?
             .as_object()?;
 
-        let this = prototype.new(self, context, prototype, &args)?;
+        let this = prototype.new(self, context, prototype, &args, constructor)?;
 
         if self.current_swf_version() < 7 {
             this.set("constructor", constructor.into(), self, context)?;
@@ -2117,7 +2146,7 @@ impl<'gc> Avm1<'gc> {
                     .resolve(self, context)?
                     .as_object()
                 {
-                    let this = prototype.new(self, context, prototype, &args)?;
+                    let this = prototype.new(self, context, prototype, &args, constructor)?;
 
                     if self.current_swf_version() < 7 {
                         this.set("constructor", constructor.into(), self, context)?;

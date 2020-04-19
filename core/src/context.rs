@@ -73,6 +73,10 @@ pub struct UpdateContext<'a, 'gc, 'gc_context> {
     /// new built-in objects.
     pub system_prototypes: avm1::SystemPrototypes<'gc>,
 
+    /// The current set of system-specified constructors to use when constructing
+    /// new built-in objects.
+    pub system_constructors: avm1::SystemConstructors<'gc>,
+
     /// The display object that the mouse is currently hovering over.
     pub mouse_hovered_object: Option<DisplayObject<'gc>>,
 

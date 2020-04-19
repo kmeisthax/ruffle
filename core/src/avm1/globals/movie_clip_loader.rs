@@ -1,5 +1,6 @@
 //! `MovieClipLoader` impl
 
+use crate::avm1::function::{Executable, FunctionObject};
 use crate::avm1::object::TObject;
 use crate::avm1::property::Attribute;
 use crate::avm1::return_value::ReturnValue;
@@ -16,7 +17,11 @@ pub fn constructor<'gc>(
     this: Object<'gc>,
     _args: &[Value<'gc>],
 ) -> Result<ReturnValue<'gc>, Error> {
-    let listeners = ScriptObject::array(context.gc_context, Some(avm.prototypes().array));
+    let listeners = ScriptObject::array(
+        context.gc_context,
+        Some(avm.prototypes().array),
+        Some(avm.constructors().array),
+    );
     this.define_value(
         context.gc_context,
         "_listeners",
@@ -199,7 +204,7 @@ pub fn get_progress<'gc>(
             .as_display_object()
             .and_then(|dobj| dobj.as_movie_clip())
         {
-            let ret_obj = ScriptObject::object(context.gc_context, None);
+            let ret_obj = ScriptObject::object(context.gc_context, None, None);
             ret_obj.define_value(
                 context.gc_context,
                 "bytesLoaded",
@@ -229,9 +234,11 @@ pub fn get_progress<'gc>(
 pub fn create_proto<'gc>(
     gc_context: MutationContext<'gc, '_>,
     proto: Object<'gc>,
+    constr: Object<'gc>,
     fn_proto: Object<'gc>,
-) -> Object<'gc> {
-    let mcl_proto = ScriptObject::object(gc_context, Some(proto));
+    fn_constr: Object<'gc>,
+) -> (Object<'gc>, Object<'gc>) {
+    let mcl_proto = ScriptObject::object(gc_context, Some(proto), Some(constr));
 
     mcl_proto.as_script_object().unwrap().force_set_function(
         "addListener",
@@ -276,5 +283,13 @@ pub fn create_proto<'gc>(
         Some(fn_proto),
     );
 
-    mcl_proto.into()
+    let movie_clip_loader = FunctionObject::function(
+        gc_context,
+        Executable::Native(constructor),
+        Some(fn_proto),
+        Some(fn_constr),
+        Some(mcl_proto.into()),
+    );
+
+    (movie_clip_loader, mcl_proto.into())
 }

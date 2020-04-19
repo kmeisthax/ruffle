@@ -26,7 +26,7 @@ impl<'gc> XMLAttributesObject<'gc> {
         gc_context: MutationContext<'gc, '_>,
         xml_node: XMLNode<'gc>,
     ) -> Object<'gc> {
-        XMLAttributesObject(ScriptObject::object(gc_context, None), xml_node).into()
+        XMLAttributesObject(ScriptObject::object(gc_context, None, None), xml_node).into()
     }
 
     fn base(&self) -> ScriptObject<'gc> {
@@ -114,6 +114,7 @@ impl<'gc> TObject<'gc> for XMLAttributesObject<'gc> {
         _context: &mut UpdateContext<'_, 'gc, '_>,
         _this: Object<'gc>,
         _args: &[Value<'gc>],
+        _constructor: Object<'gc>,
     ) -> Result<Object<'gc>, Error> {
         //TODO: `new xmlnode.attributes()` returns undefined, not an object
         Err("Cannot create new XML Attributes object".into())
@@ -183,6 +184,10 @@ impl<'gc> TObject<'gc> for XMLAttributesObject<'gc> {
 
     fn set_proto(&self, gc_context: MutationContext<'gc, '_>, prototype: Option<Object<'gc>>) {
         self.base().set_proto(gc_context, prototype);
+    }
+
+    fn constr(&self) -> Option<Object<'gc>> {
+        self.base().constr()
     }
 
     fn has_property(

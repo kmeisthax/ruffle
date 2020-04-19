@@ -61,20 +61,8 @@ impl<'gc> SuperObject<'gc> {
     }
 
     /// Retrieve the constructor associated with the super proto.
-    fn super_constr(
-        self,
-        avm: &mut Avm1<'gc>,
-        context: &mut UpdateContext<'_, 'gc, '_>,
-    ) -> Result<Option<Object<'gc>>, Error> {
-        if let Some(super_proto) = self.super_proto() {
-            Ok(super_proto
-                .get("constructor", avm, context)?
-                .resolve(avm, context)?
-                .as_object()
-                .ok())
-        } else {
-            Ok(None)
-        }
+    fn super_constr(self) -> Option<Object<'gc>> {
+        self.super_proto()?.constr()
     }
 }
 
@@ -108,7 +96,7 @@ impl<'gc> TObject<'gc> for SuperObject<'gc> {
         _base_proto: Option<Object<'gc>>,
         args: &[Value<'gc>],
     ) -> Result<ReturnValue<'gc>, Error> {
-        if let Some(constr) = self.super_constr(avm, context)? {
+        if let Some(constr) = self.super_constr() {
             constr.call(avm, context, self.0.read().child, self.super_proto(), args)
         } else {
             Ok(Value::Undefined.into())
@@ -156,14 +144,20 @@ impl<'gc> TObject<'gc> for SuperObject<'gc> {
         context: &mut UpdateContext<'_, 'gc, '_>,
         this: Object<'gc>,
         args: &[Value<'gc>],
+        constructor: Object<'gc>,
     ) -> Result<Object<'gc>, Error> {
         if let Some(proto) = self.proto() {
-            proto.new(avm, context, this, args)
-        } else {
-            // TODO: What happens when you `new super` but there's no
-            // super? Is this code even reachable?!
-            self.0.read().child.new(avm, context, this, args)
+            if let Some(constr) = proto.constr() {
+                return proto.new(avm, context, this, args, constr);
+            }
         }
+
+        // TODO: What happens when you `new super` but there's no
+        // super prototype or constructor? Is this code even reachable?!
+        self.0
+            .read()
+            .child
+            .new(avm, context, this, args, constructor)
     }
 
     fn delete(
@@ -180,8 +174,12 @@ impl<'gc> TObject<'gc> for SuperObject<'gc> {
         self.super_proto()
     }
 
-    fn set_proto(&self, gc_context: MutationContext<'gc, '_>, prototype: Option<Object<'gc>>) {
-        self.0.write(gc_context).proto = prototype;
+    fn set_proto(&self, _gc_context: MutationContext<'gc, '_>, _prototype: Option<Object<'gc>>) {
+        // `super` does not have a prototype
+    }
+
+    fn constr(&self) -> Option<Object<'gc>> {
+        self.super_constr()
     }
 
     fn define_value(
@@ -327,9 +325,8 @@ impl<'gc> TObject<'gc> for SuperObject<'gc> {
 
     fn as_executable(&self) -> Option<Executable<'gc>> {
         //well, `super` *can* be called...
-        //...but `super_constr` needs an avm and context in order to get called.
-        //ergo, we can't downcast.
-        None
+        self.super_constr()
+            .and_then(|constr| constr.as_executable())
     }
 
     fn as_ptr(&self) -> *const ObjectPtr {

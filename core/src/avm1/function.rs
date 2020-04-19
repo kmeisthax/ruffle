@@ -234,7 +234,11 @@ impl<'gc> Executable<'gc> {
                     ac.gc_context,
                     Scope::new_local_scope(af.scope(), ac.gc_context),
                 );
-                let arguments = ScriptObject::object(ac.gc_context, Some(avm.prototypes().object));
+                let arguments = ScriptObject::object(
+                    ac.gc_context,
+                    Some(avm.prototypes().object),
+                    Some(avm.constructors().object),
+                );
                 if !af.suppress_arguments {
                     for i in 0..args.len() {
                         arguments.define_value(
@@ -401,12 +405,17 @@ struct FunctionObjectData<'gc> {
 
 impl<'gc> FunctionObject<'gc> {
     /// Construct a function sans prototype.
+    ///
+    /// This function assumes the passed-in `fn_proto` is also the constructor
+    /// of this function. This is a safe assumtion, as all functions are
+    /// 'constructed' by `Function` (which doesn't call `super` anyway)
     pub fn bare_function(
         gc_context: MutationContext<'gc, '_>,
         function: impl Into<Executable<'gc>>,
         fn_proto: Option<Object<'gc>>,
+        fn_constr: Option<Object<'gc>>,
     ) -> Self {
-        let base = ScriptObject::object(gc_context, fn_proto);
+        let base = ScriptObject::object(gc_context, fn_proto, fn_constr);
 
         FunctionObject {
             base,
@@ -432,9 +441,10 @@ impl<'gc> FunctionObject<'gc> {
         context: MutationContext<'gc, '_>,
         function: impl Into<Executable<'gc>>,
         fn_proto: Option<Object<'gc>>,
+        fn_constr: Option<Object<'gc>>,
         prototype: Option<Object<'gc>>,
     ) -> Object<'gc> {
-        let function = Self::bare_function(context, function, fn_proto).into();
+        let function = Self::bare_function(context, function, fn_proto, fn_constr).into();
 
         if let Some(p) = prototype {
             p.define_value(
@@ -443,6 +453,7 @@ impl<'gc> FunctionObject<'gc> {
                 Value::Object(function),
                 DontEnum.into(),
             );
+
             function.define_value(context, "prototype", p.into(), EnumSet::empty());
         }
 
@@ -504,8 +515,9 @@ impl<'gc> TObject<'gc> for FunctionObject<'gc> {
         context: &mut UpdateContext<'_, 'gc, '_>,
         prototype: Object<'gc>,
         _args: &[Value<'gc>],
+        constructor: Object<'gc>,
     ) -> Result<Object<'gc>, Error> {
-        let base = ScriptObject::object(context.gc_context, Some(prototype));
+        let base = ScriptObject::object(context.gc_context, Some(prototype), Some(constructor));
         let fn_object = FunctionObject {
             base,
             data: GcCell::allocate(
@@ -535,6 +547,10 @@ impl<'gc> TObject<'gc> for FunctionObject<'gc> {
 
     fn set_proto(&self, gc_context: MutationContext<'gc, '_>, prototype: Option<Object<'gc>>) {
         self.base.set_proto(gc_context, prototype);
+    }
+
+    fn constr(&self) -> Option<Object<'gc>> {
+        self.base.constr()
     }
 
     fn define_value(

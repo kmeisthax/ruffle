@@ -32,61 +32,39 @@ pub fn string<'gc>(
     Ok(value.into())
 }
 
-pub fn create_string_object<'gc>(
-    gc_context: MutationContext<'gc, '_>,
-    string_proto: Option<Object<'gc>>,
-    fn_proto: Option<Object<'gc>>,
-) -> Object<'gc> {
-    let string = FunctionObject::function(
-        gc_context,
-        Executable::Native(string),
-        fn_proto,
-        string_proto,
-    );
-    let mut object = string.as_script_object().unwrap();
-
-    object.force_set_function(
-        "fromCharCode",
-        from_char_code,
-        gc_context,
-        DontDelete | ReadOnly | DontEnum,
-        fn_proto,
-    );
-
-    string
-}
-
 /// Creates `String.prototype`.
 pub fn create_proto<'gc>(
     gc_context: MutationContext<'gc, '_>,
     proto: Object<'gc>,
+    constr: Object<'gc>,
     fn_proto: Object<'gc>,
-) -> Object<'gc> {
-    let string_proto = ValueObject::empty_box(gc_context, Some(proto));
-    let mut object = string_proto.as_script_object().unwrap();
+    fn_constr: Object<'gc>,
+) -> (Object<'gc>, Object<'gc>) {
+    let string_proto = ValueObject::empty_box(gc_context, Some(proto), Some(constr));
+    let mut sp_object = string_proto.as_script_object().unwrap();
 
-    object.force_set_function(
+    sp_object.force_set_function(
         "toString",
         to_string_value_of,
         gc_context,
         EnumSet::empty(),
         Some(fn_proto),
     );
-    object.force_set_function(
+    sp_object.force_set_function(
         "valueOf",
         to_string_value_of,
         gc_context,
         EnumSet::empty(),
         Some(fn_proto),
     );
-    object.force_set_function(
+    sp_object.force_set_function(
         "charAt",
         char_at,
         gc_context,
         DontDelete | ReadOnly | DontEnum,
         Some(fn_proto),
     );
-    object.force_set_function(
+    sp_object.force_set_function(
         "charCodeAt",
         char_code_at,
         gc_context,
@@ -94,7 +72,7 @@ pub fn create_proto<'gc>(
         Some(fn_proto),
     );
 
-    object.force_set_function(
+    sp_object.force_set_function(
         "concat",
         concat,
         gc_context,
@@ -102,7 +80,7 @@ pub fn create_proto<'gc>(
         Some(fn_proto),
     );
 
-    object.force_set_function(
+    sp_object.force_set_function(
         "indexOf",
         index_of,
         gc_context,
@@ -110,7 +88,7 @@ pub fn create_proto<'gc>(
         Some(fn_proto),
     );
 
-    object.force_set_function(
+    sp_object.force_set_function(
         "lastIndexOf",
         last_index_of,
         gc_context,
@@ -118,7 +96,7 @@ pub fn create_proto<'gc>(
         Some(fn_proto),
     );
 
-    object.force_set_function(
+    sp_object.force_set_function(
         "slice",
         slice,
         gc_context,
@@ -126,7 +104,7 @@ pub fn create_proto<'gc>(
         Some(fn_proto),
     );
 
-    object.force_set_function(
+    sp_object.force_set_function(
         "split",
         split,
         gc_context,
@@ -134,7 +112,7 @@ pub fn create_proto<'gc>(
         Some(fn_proto),
     );
 
-    object.force_set_function(
+    sp_object.force_set_function(
         "substr",
         substr,
         gc_context,
@@ -142,7 +120,7 @@ pub fn create_proto<'gc>(
         Some(fn_proto),
     );
 
-    object.force_set_function(
+    sp_object.force_set_function(
         "substring",
         substring,
         gc_context,
@@ -150,7 +128,7 @@ pub fn create_proto<'gc>(
         Some(fn_proto),
     );
 
-    object.force_set_function(
+    sp_object.force_set_function(
         "toLowerCase",
         to_lower_case,
         gc_context,
@@ -158,7 +136,7 @@ pub fn create_proto<'gc>(
         Some(fn_proto),
     );
 
-    object.force_set_function(
+    sp_object.force_set_function(
         "toUpperCase",
         to_upper_case,
         gc_context,
@@ -166,7 +144,24 @@ pub fn create_proto<'gc>(
         Some(fn_proto),
     );
 
-    string_proto
+    let string = FunctionObject::function(
+        gc_context,
+        Executable::Native(string),
+        Some(fn_proto),
+        Some(fn_constr),
+        Some(string_proto),
+    );
+    let mut s_object = string.as_script_object().unwrap();
+
+    s_object.force_set_function(
+        "fromCharCode",
+        from_char_code,
+        gc_context,
+        DontDelete | ReadOnly | DontEnum,
+        Some(fn_proto),
+    );
+
+    (string, string_proto)
 }
 
 fn char_at<'gc>(
@@ -399,7 +394,11 @@ fn split<'gc>(
         None | Some(Value::Undefined) => std::usize::MAX,
         Some(n) => std::cmp::max(0, n.coerce_to_i32(avm, context)?) as usize,
     };
-    let array = ScriptObject::array(context.gc_context, Some(avm.prototypes.array));
+    let array = ScriptObject::array(
+        context.gc_context,
+        Some(avm.prototypes.array),
+        Some(avm.constructors.array),
+    );
     if !delimiter.is_empty() {
         for (i, token) in this.split(&delimiter).take(limit).enumerate() {
             array.set_array_element(i, token.to_string().into(), context.gc_context);

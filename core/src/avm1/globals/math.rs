@@ -141,9 +141,10 @@ pub fn random<'gc>(
 pub fn create<'gc>(
     gc_context: MutationContext<'gc, '_>,
     proto: Option<Object<'gc>>,
+    constr: Option<Object<'gc>>,
     fn_proto: Option<Object<'gc>>,
 ) -> Object<'gc> {
-    let mut math = ScriptObject::object(gc_context, proto);
+    let mut math = ScriptObject::object(gc_context, proto, constr);
 
     math.define_value(
         gc_context,
@@ -264,6 +265,7 @@ mod tests {
         create(
             context.gc_context,
             Some(avm.prototypes().object),
+            Some(avm.constructors().object),
             Some(avm.prototypes().function),
         )
     }
@@ -482,6 +484,7 @@ mod tests {
             let math = create(
                 context.gc_context,
                 Some(avm.prototypes().object),
+                Some(avm.constructors().object),
                 Some(avm.prototypes().function),
             );
 
@@ -507,6 +510,7 @@ mod tests {
             let math = create(
                 context.gc_context,
                 Some(avm.prototypes().object),
+                Some(avm.constructors().object),
                 Some(avm.prototypes().function),
             );
 

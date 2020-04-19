@@ -1,10 +1,11 @@
 use crate::avm1::fscommand;
-use crate::avm1::function::{Executable, FunctionObject};
+use crate::avm1::function::Executable;
 use crate::avm1::listeners::SystemListeners;
 use crate::avm1::return_value::ReturnValue;
 use crate::avm1::{Avm1, Error, Object, ScriptObject, TObject, UpdateContext, Value};
 use crate::backend::navigator::NavigationMethod;
 use enumset::EnumSet;
+use gc_arena::Collect;
 use gc_arena::MutationContext;
 use rand::Rng;
 use std::f64;
@@ -113,7 +114,8 @@ pub fn get_nan<'gc>(
 /// This structure represents all system builtins that are used regardless of
 /// whatever the hell happens to `_global`. These are, of course,
 /// user-modifiable.
-#[derive(Clone)]
+#[derive(Collect, Clone)]
+#[collect(no_drop)]
 pub struct SystemPrototypes<'gc> {
     pub button: Object<'gc>,
     pub object: Object<'gc>,
@@ -129,131 +131,95 @@ pub struct SystemPrototypes<'gc> {
     pub boolean: Object<'gc>,
 }
 
-unsafe impl<'gc> gc_arena::Collect for SystemPrototypes<'gc> {
-    #[inline]
-    fn trace(&self, cc: gc_arena::CollectionContext) {
-        self.object.trace(cc);
-        self.function.trace(cc);
-        self.movie_clip.trace(cc);
-        self.button.trace(cc);
-        self.sound.trace(cc);
-        self.text_field.trace(cc);
-        self.text_format.trace(cc);
-        self.array.trace(cc);
-        self.xml_node.trace(cc);
-        self.string.trace(cc);
-        self.number.trace(cc);
-        self.boolean.trace(cc);
-    }
+/// This structure represents all system builtin constructors that are used
+/// regardless of whatever the hell happens to `_global`. These are, of course,
+/// user-modifiable.
+#[derive(Collect, Clone)]
+#[collect(no_drop)]
+pub struct SystemConstructors<'gc> {
+    pub button: Object<'gc>,
+    pub object: Object<'gc>,
+    pub function: Object<'gc>,
+    pub movie_clip: Object<'gc>,
+    pub sound: Object<'gc>,
+    pub text_field: Object<'gc>,
+    pub text_format: Object<'gc>,
+    pub array: Object<'gc>,
+    pub xml_node: Object<'gc>,
+    pub string: Object<'gc>,
+    pub number: Object<'gc>,
+    pub boolean: Object<'gc>,
 }
 
 /// Initialize default global scope and builtins for an AVM1 instance.
 pub fn create_globals<'gc>(
     gc_context: MutationContext<'gc, '_>,
-) -> (SystemPrototypes<'gc>, Object<'gc>, SystemListeners<'gc>) {
-    let object_proto = ScriptObject::object_cell(gc_context, None);
+) -> (
+    SystemPrototypes<'gc>,
+    SystemConstructors<'gc>,
+    Object<'gc>,
+    SystemListeners<'gc>,
+) {
+    // `Object` and `Function are tricky to create, because `Function` is a
+    // subclass of `Object`, but `Object` is an instance of `Function`. Thus, we
+    // have to dance around half-constructed objects until both are initialized.
+    let object_proto = ScriptObject::object_cell(gc_context, None, None);
     let function_proto = function::create_proto(gc_context, object_proto);
 
     object::fill_proto(gc_context, object_proto, function_proto);
-
-    let button_proto: Object<'gc> = button::create_proto(gc_context, object_proto, function_proto);
-
-    let movie_clip_proto: Object<'gc> =
-        movie_clip::create_proto(gc_context, object_proto, function_proto);
-
-    let movie_clip_loader_proto: Object<'gc> =
-        movie_clip_loader::create_proto(gc_context, object_proto, function_proto);
-
-    let sound_proto: Object<'gc> = sound::create_proto(gc_context, object_proto, function_proto);
-
-    let text_field_proto: Object<'gc> =
-        text_field::create_proto(gc_context, object_proto, function_proto);
-    let text_format_proto: Object<'gc> =
-        text_format::create_proto(gc_context, object_proto, function_proto);
-
-    let array_proto: Object<'gc> = array::create_proto(gc_context, object_proto, function_proto);
-
-    let color_proto: Object<'gc> = color::create_proto(gc_context, object_proto, function_proto);
-    let xmlnode_proto: Object<'gc> =
-        xml::create_xmlnode_proto(gc_context, object_proto, function_proto);
-
-    let xml_proto: Object<'gc> = xml::create_xml_proto(gc_context, xmlnode_proto, function_proto);
-
-    let string_proto: Object<'gc> = string::create_proto(gc_context, object_proto, function_proto);
-    let number_proto: Object<'gc> = number::create_proto(gc_context, object_proto, function_proto);
-    let boolean_proto: Object<'gc> =
-        boolean::create_proto(gc_context, object_proto, function_proto);
-
-    //TODO: These need to be constructors and should also set `.prototype` on each one
     let object = object::create_object_object(gc_context, object_proto, function_proto);
+    let function = function::finish_function_object(gc_context, function_proto, object);
 
-    let button = FunctionObject::function(
-        gc_context,
-        Executable::Native(button::constructor),
-        Some(function_proto),
-        Some(button_proto),
-    );
-    let color = FunctionObject::function(
-        gc_context,
-        Executable::Native(color::constructor),
-        Some(function_proto),
-        Some(color_proto),
-    );
-    let function = FunctionObject::function(
-        gc_context,
-        Executable::Native(function::constructor),
-        Some(function_proto),
-        Some(function_proto),
-    );
-    let movie_clip = FunctionObject::function(
-        gc_context,
-        Executable::Native(movie_clip::constructor),
-        Some(function_proto),
-        Some(movie_clip_proto),
-    );
-    let movie_clip_loader = FunctionObject::function(
-        gc_context,
-        Executable::Native(movie_clip_loader::constructor),
-        Some(function_proto),
-        Some(movie_clip_loader_proto),
-    );
-    let sound = FunctionObject::function(
-        gc_context,
-        Executable::Native(sound::constructor),
-        Some(function_proto),
-        Some(sound_proto),
-    );
-    let text_field = FunctionObject::function(
-        gc_context,
-        Executable::Native(text_field::constructor),
-        Some(function_proto),
-        Some(text_field_proto),
-    );
-    let text_format = FunctionObject::function(
-        gc_context,
-        Executable::Native(text_format::constructor),
-        Some(function_proto),
-        Some(text_format_proto),
-    );
-    let array = array::create_array_object(gc_context, Some(array_proto), Some(function_proto));
-    let xmlnode = FunctionObject::function(
-        gc_context,
-        Executable::Native(xml::xmlnode_constructor),
-        Some(function_proto),
-        Some(xmlnode_proto),
-    );
-    let xml = FunctionObject::function(
-        gc_context,
-        Executable::Native(xml::xml_constructor),
-        Some(function_proto),
-        Some(xml_proto),
-    );
-    let string = string::create_string_object(gc_context, Some(string_proto), Some(function_proto));
-    let number = number::create_number_object(gc_context, Some(number_proto), Some(function_proto));
-    let boolean =
-        boolean::create_boolean_object(gc_context, Some(boolean_proto), Some(function_proto));
+    // Prototypes and constructors have to be created in a very specific order,
+    // to ensure prototypes are linked to the constructor that would have been
+    // called to create them via `new`. Now that `Object` and `Function` both
+    // exist, we can create all the other immediate subclasses. We'll call
+    // these "second-generation" builtins.
+    let (button, button_proto) =
+        button::create_proto(gc_context, object_proto, object, function_proto, function);
 
-    let listeners = SystemListeners::new(gc_context, Some(array_proto));
+    let (movie_clip, movie_clip_proto) =
+        movie_clip::create_proto(gc_context, object_proto, object, function_proto, function);
+
+    let (movie_clip_loader, _movie_clip_loader_proto) =
+        movie_clip_loader::create_proto(gc_context, object_proto, object, function_proto, function);
+
+    let (sound, sound_proto) =
+        sound::create_proto(gc_context, object_proto, object, function_proto, function);
+
+    let (text_field, text_field_proto) =
+        text_field::create_proto(gc_context, object_proto, object, function_proto, function);
+    let (text_format, text_format_proto) =
+        text_format::create_proto(gc_context, object_proto, object, function_proto, function);
+
+    let (array, array_proto) =
+        array::create_proto(gc_context, object_proto, object, function_proto, function);
+
+    let (color, _color_proto) =
+        color::create_proto(gc_context, object_proto, object, function_proto, function);
+    let (xml_node, xml_node_proto) =
+        xml::create_xmlnode_proto(gc_context, object_proto, object, function_proto, function);
+
+    let (string, string_proto) =
+        string::create_proto(gc_context, object_proto, object, function_proto, function);
+    let (number, number_proto) =
+        number::create_proto(gc_context, object_proto, object, function_proto, function);
+    let (boolean, boolean_proto) =
+        boolean::create_proto(gc_context, object_proto, object, function_proto, function);
+
+    // These builtins are subclasses of one of the above classes, and thus
+    // become third-generation builtins.
+    let (xml, _xml_proto) = xml::create_xml_proto(
+        gc_context,
+        xml_node_proto,
+        xml_node,
+        function_proto,
+        function,
+    );
+
+    // Now, we hook everything we just built up to the root scope, and hand it
+    // off to the AVM that called us.
+    let listeners = SystemListeners::new(gc_context, Some(array_proto), Some(array));
 
     let mut globals = ScriptObject::bare_object(gc_context);
     globals.define_value(gc_context, "Array", array.into(), EnumSet::empty());
@@ -276,7 +242,7 @@ pub fn create_globals<'gc>(
         text_format.into(),
         EnumSet::empty(),
     );
-    globals.define_value(gc_context, "XMLNode", xmlnode.into(), EnumSet::empty());
+    globals.define_value(gc_context, "XMLNode", xml_node.into(), EnumSet::empty());
     globals.define_value(gc_context, "XML", xml.into(), EnumSet::empty());
     globals.define_value(gc_context, "String", string.into(), EnumSet::empty());
     globals.define_value(gc_context, "Number", number.into(), EnumSet::empty());
@@ -288,6 +254,7 @@ pub fn create_globals<'gc>(
         Value::Object(math::create(
             gc_context,
             Some(object_proto),
+            Some(object),
             Some(function_proto),
         )),
         EnumSet::empty(),
@@ -298,6 +265,7 @@ pub fn create_globals<'gc>(
         Value::Object(mouse::create_mouse_object(
             gc_context,
             Some(object_proto),
+            Some(object),
             Some(function_proto),
             &listeners.mouse,
         )),
@@ -309,6 +277,7 @@ pub fn create_globals<'gc>(
         Value::Object(key::create_key_object(
             gc_context,
             Some(object_proto),
+            Some(object),
             Some(function_proto),
         )),
         EnumSet::empty(),
@@ -319,6 +288,7 @@ pub fn create_globals<'gc>(
         Value::Object(stage::create_stage_object(
             gc_context,
             Some(object_proto),
+            Some(object),
             Some(array_proto),
             Some(function_proto),
         )),
@@ -377,10 +347,24 @@ pub fn create_globals<'gc>(
             text_field: text_field_proto,
             text_format: text_format_proto,
             array: array_proto,
-            xml_node: xmlnode_proto,
+            xml_node: xml_node_proto,
             string: string_proto,
             number: number_proto,
             boolean: boolean_proto,
+        },
+        SystemConstructors {
+            button,
+            object,
+            function,
+            movie_clip,
+            sound,
+            text_field,
+            text_format,
+            array,
+            xml_node,
+            string,
+            number,
+            boolean,
         },
         globals.into(),
         listeners,
@@ -393,7 +377,7 @@ mod tests {
     use super::*;
 
     fn setup<'gc>(_avm: &mut Avm1<'gc>, context: &mut UpdateContext<'_, 'gc, '_>) -> Object<'gc> {
-        create_globals(context.gc_context).1
+        create_globals(context.gc_context).2
     }
 
     test_method!(boolean_function, "Boolean", setup,

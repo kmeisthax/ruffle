@@ -51,6 +51,7 @@ where
             navigator: &mut NullNavigatorBackend::new(),
             renderer: &mut NullRenderer::new(),
             system_prototypes: avm.prototypes().clone(),
+            system_constructors: avm.constructors().clone(),
             mouse_hovered_object: None,
             mouse_position: &(Twips::new(0), Twips::new(0)),
             drag_object: &mut None,

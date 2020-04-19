@@ -1,7 +1,7 @@
 //! AVM1 Sound object
 //! TODO: Sound position, transform, loadSound
 
-use crate::avm1::function::Executable;
+use crate::avm1::function::{Executable, FunctionObject};
 use crate::avm1::property::Attribute::*;
 use crate::avm1::return_value::ReturnValue;
 use crate::avm1::{Avm1, Error, Object, SoundObject, TObject, UpdateContext, Value};
@@ -32,11 +32,13 @@ pub fn constructor<'gc>(
 pub fn create_proto<'gc>(
     gc_context: MutationContext<'gc, '_>,
     proto: Object<'gc>,
+    constr: Object<'gc>,
     fn_proto: Object<'gc>,
-) -> Object<'gc> {
-    let object = SoundObject::empty_sound(gc_context, Some(proto));
+    fn_constr: Object<'gc>,
+) -> (Object<'gc>, Object<'gc>) {
+    let sound_proto = SoundObject::empty_sound(gc_context, Some(proto), Some(constr));
 
-    object.as_script_object().unwrap().force_set_function(
+    sound_proto.as_script_object().unwrap().force_set_function(
         "attachSound",
         attach_sound,
         gc_context,
@@ -44,7 +46,7 @@ pub fn create_proto<'gc>(
         Some(fn_proto),
     );
 
-    object.add_property(
+    sound_proto.add_property(
         gc_context,
         "duration",
         Executable::Native(duration),
@@ -52,7 +54,7 @@ pub fn create_proto<'gc>(
         DontDelete | ReadOnly | DontEnum,
     );
 
-    object.add_property(
+    sound_proto.add_property(
         gc_context,
         "id3",
         Executable::Native(id3),
@@ -60,7 +62,7 @@ pub fn create_proto<'gc>(
         DontDelete | ReadOnly | DontEnum,
     );
 
-    object.as_script_object().unwrap().force_set_function(
+    sound_proto.as_script_object().unwrap().force_set_function(
         "getBytesLoaded",
         get_bytes_loaded,
         gc_context,
@@ -68,7 +70,7 @@ pub fn create_proto<'gc>(
         Some(fn_proto),
     );
 
-    object.as_script_object().unwrap().force_set_function(
+    sound_proto.as_script_object().unwrap().force_set_function(
         "getBytesTotal",
         get_bytes_total,
         gc_context,
@@ -76,7 +78,7 @@ pub fn create_proto<'gc>(
         Some(fn_proto),
     );
 
-    object.as_script_object().unwrap().force_set_function(
+    sound_proto.as_script_object().unwrap().force_set_function(
         "getPan",
         get_pan,
         gc_context,
@@ -84,7 +86,7 @@ pub fn create_proto<'gc>(
         Some(fn_proto),
     );
 
-    object.as_script_object().unwrap().force_set_function(
+    sound_proto.as_script_object().unwrap().force_set_function(
         "get_transform",
         get_transform,
         gc_context,
@@ -92,7 +94,7 @@ pub fn create_proto<'gc>(
         Some(fn_proto),
     );
 
-    object.as_script_object().unwrap().force_set_function(
+    sound_proto.as_script_object().unwrap().force_set_function(
         "get_volume",
         get_volume,
         gc_context,
@@ -100,7 +102,7 @@ pub fn create_proto<'gc>(
         Some(fn_proto),
     );
 
-    object.as_script_object().unwrap().force_set_function(
+    sound_proto.as_script_object().unwrap().force_set_function(
         "load_sound",
         load_sound,
         gc_context,
@@ -108,7 +110,7 @@ pub fn create_proto<'gc>(
         Some(fn_proto),
     );
 
-    object.add_property(
+    sound_proto.add_property(
         gc_context,
         "position",
         Executable::Native(position),
@@ -116,7 +118,7 @@ pub fn create_proto<'gc>(
         DontDelete | ReadOnly | DontEnum,
     );
 
-    object.as_script_object().unwrap().force_set_function(
+    sound_proto.as_script_object().unwrap().force_set_function(
         "set_pan",
         set_pan,
         gc_context,
@@ -124,7 +126,7 @@ pub fn create_proto<'gc>(
         Some(fn_proto),
     );
 
-    object.as_script_object().unwrap().force_set_function(
+    sound_proto.as_script_object().unwrap().force_set_function(
         "set_transform",
         set_transform,
         gc_context,
@@ -132,7 +134,7 @@ pub fn create_proto<'gc>(
         Some(fn_proto),
     );
 
-    object.as_script_object().unwrap().force_set_function(
+    sound_proto.as_script_object().unwrap().force_set_function(
         "set_volume",
         set_volume,
         gc_context,
@@ -140,7 +142,7 @@ pub fn create_proto<'gc>(
         Some(fn_proto),
     );
 
-    object.as_script_object().unwrap().force_set_function(
+    sound_proto.as_script_object().unwrap().force_set_function(
         "start",
         start,
         gc_context,
@@ -148,7 +150,7 @@ pub fn create_proto<'gc>(
         Some(fn_proto),
     );
 
-    object.as_script_object().unwrap().force_set_function(
+    sound_proto.as_script_object().unwrap().force_set_function(
         "stop",
         stop,
         gc_context,
@@ -156,7 +158,15 @@ pub fn create_proto<'gc>(
         Some(fn_proto),
     );
 
-    object.into()
+    let sound = FunctionObject::function(
+        gc_context,
+        Executable::Native(constructor),
+        Some(fn_proto),
+        Some(fn_constr),
+        Some(sound_proto.into()),
+    );
+
+    (sound, sound_proto.into())
 }
 
 fn attach_sound<'gc>(

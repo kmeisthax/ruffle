@@ -26,60 +26,6 @@ type CompareFn<'a, 'gc> = Box<
         + FnMut(&mut Avm1<'gc>, &mut UpdateContext<'_, 'gc, '_>, &Value<'gc>, &Value<'gc>) -> Ordering,
 >;
 
-pub fn create_array_object<'gc>(
-    gc_context: MutationContext<'gc, '_>,
-    array_proto: Option<Object<'gc>>,
-    fn_proto: Option<Object<'gc>>,
-) -> Object<'gc> {
-    let array = FunctionObject::function(
-        gc_context,
-        Executable::Native(constructor),
-        fn_proto,
-        array_proto,
-    );
-    let object = array.as_script_object().unwrap();
-
-    // TODO: These were added in Flash Player 7, but are available even to SWFv6 and lower
-    // when run in Flash Player 7. Make these conditional if we add a parameter to control
-    // target Flash Player version.
-    object.define_value(
-        gc_context,
-        "CASEINSENSITIVE",
-        1.into(),
-        Attribute::DontEnum | Attribute::DontDelete | Attribute::ReadOnly,
-    );
-
-    object.define_value(
-        gc_context,
-        "DESCENDING",
-        2.into(),
-        Attribute::DontEnum | Attribute::DontDelete | Attribute::ReadOnly,
-    );
-
-    object.define_value(
-        gc_context,
-        "UNIQUESORT",
-        4.into(),
-        Attribute::DontEnum | Attribute::DontDelete | Attribute::ReadOnly,
-    );
-
-    object.define_value(
-        gc_context,
-        "RETURNINDEXEDARRAY",
-        8.into(),
-        Attribute::DontEnum | Attribute::DontDelete | Attribute::ReadOnly,
-    );
-
-    object.define_value(
-        gc_context,
-        "NUMERIC",
-        16.into(),
-        Attribute::DontEnum | Attribute::DontDelete | Attribute::ReadOnly,
-    );
-
-    array
-}
-
 /// Implements `Array`
 pub fn constructor<'gc>(
     avm: &mut Avm1<'gc>,
@@ -279,7 +225,11 @@ pub fn slice<'gc>(
         .map(|v| make_index_absolute(v as i32, this.length()))
         .unwrap_or_else(|| this.length());
 
-    let array = ScriptObject::array(context.gc_context, Some(avm.prototypes.array));
+    let array = ScriptObject::array(
+        context.gc_context,
+        Some(avm.prototypes.array),
+        Some(avm.constructors.array),
+    );
 
     if start < end {
         let length = end - start;
@@ -318,7 +268,11 @@ pub fn splice<'gc>(
         return Ok(Value::Undefined.into());
     }
 
-    let removed = ScriptObject::array(context.gc_context, Some(avm.prototypes.array));
+    let removed = ScriptObject::array(
+        context.gc_context,
+        Some(avm.prototypes.array),
+        Some(avm.constructors.array),
+    );
     let to_remove = count.min(old_length as i32 - start as i32).max(0) as usize;
     let to_add = if args.len() > 2 { &args[2..] } else { &[] };
     let offset = to_remove as i32 - to_add.len() as i32;
@@ -371,7 +325,11 @@ pub fn concat<'gc>(
     this: Object<'gc>,
     args: &[Value<'gc>],
 ) -> Result<ReturnValue<'gc>, Error> {
-    let array = ScriptObject::array(context.gc_context, Some(avm.prototypes.array));
+    let array = ScriptObject::array(
+        context.gc_context,
+        Some(avm.prototypes.array),
+        Some(avm.constructors.array),
+    );
     let mut length = 0;
 
     for i in 0..this.length() {
@@ -577,6 +535,7 @@ fn sort_with_function<'gc>(
     let length = this.length();
     let mut values: Vec<(usize, Value<'gc>)> = this.array().into_iter().enumerate().collect();
     let array_proto = avm.prototypes.array;
+    let array_constr = avm.constructors.array;
 
     let descending = (flags & DESCENDING) != 0;
     let unique_sort = (flags & UNIQUE_SORT) != 0;
@@ -604,7 +563,7 @@ fn sort_with_function<'gc>(
     if return_indexed_array {
         // Array.RETURNINDEXEDARRAY returns an array containing the sorted indices, and does not modify
         // the original array.
-        let array = ScriptObject::array(context.gc_context, Some(array_proto));
+        let array = ScriptObject::array(context.gc_context, Some(array_proto), Some(array_constr));
         array.set_length(context.gc_context, length);
         for (i, value) in values.into_iter().enumerate() {
             array.set_array_element(i, Value::Number(value.0 as f64), context.gc_context);
@@ -623,83 +582,85 @@ fn sort_with_function<'gc>(
 pub fn create_proto<'gc>(
     gc_context: MutationContext<'gc, '_>,
     proto: Object<'gc>,
+    constr: Object<'gc>,
     fn_proto: Object<'gc>,
-) -> Object<'gc> {
-    let array = ScriptObject::array(gc_context, Some(proto));
-    let mut object = array.as_script_object().unwrap();
+    fn_constr: Object<'gc>,
+) -> (Object<'gc>, Object<'gc>) {
+    let array_proto = ScriptObject::array(gc_context, Some(proto), Some(constr));
+    let mut as_script = array_proto.as_script_object().unwrap();
 
-    object.force_set_function(
+    as_script.force_set_function(
         "push",
         push,
         gc_context,
         Attribute::DontEnum,
         Some(fn_proto),
     );
-    object.force_set_function(
+    as_script.force_set_function(
         "unshift",
         unshift,
         gc_context,
         Attribute::DontEnum,
         Some(fn_proto),
     );
-    object.force_set_function(
+    as_script.force_set_function(
         "shift",
         shift,
         gc_context,
         Attribute::DontEnum,
         Some(fn_proto),
     );
-    object.force_set_function("pop", pop, gc_context, Attribute::DontEnum, Some(fn_proto));
-    object.force_set_function(
+    as_script.force_set_function("pop", pop, gc_context, Attribute::DontEnum, Some(fn_proto));
+    as_script.force_set_function(
         "reverse",
         reverse,
         gc_context,
         Attribute::DontEnum,
         Some(fn_proto),
     );
-    object.force_set_function(
+    as_script.force_set_function(
         "join",
         join,
         gc_context,
         Attribute::DontEnum,
         Some(fn_proto),
     );
-    object.force_set_function(
+    as_script.force_set_function(
         "slice",
         slice,
         gc_context,
         Attribute::DontEnum,
         Some(fn_proto),
     );
-    object.force_set_function(
+    as_script.force_set_function(
         "splice",
         splice,
         gc_context,
         Attribute::DontEnum,
         Some(fn_proto),
     );
-    object.force_set_function(
+    as_script.force_set_function(
         "concat",
         concat,
         gc_context,
         Attribute::DontEnum,
         Some(fn_proto),
     );
-    object.force_set_function(
+    as_script.force_set_function(
         "toString",
         to_string,
         gc_context,
         Attribute::DontEnum,
         Some(fn_proto),
     );
-    object.force_set_function(
+    as_script.force_set_function(
         "sort",
         sort,
         gc_context,
         Attribute::DontEnum,
         Some(fn_proto),
     );
-    object.force_set_function(
+    as_script.force_set_function(
         "sortOn",
         sort_on,
         gc_context,
@@ -707,7 +668,54 @@ pub fn create_proto<'gc>(
         Some(fn_proto),
     );
 
-    array.into()
+    let array = FunctionObject::function(
+        gc_context,
+        Executable::Native(constructor),
+        Some(fn_proto),
+        Some(fn_constr),
+        Some(array_proto.into()),
+    );
+    let as_script = array.as_script_object().unwrap();
+
+    // TODO: These were added in Flash Player 7, but are available even to SWFv6 and lower
+    // when run in Flash Player 7. Make these conditional if we add a parameter to control
+    // target Flash Player version.
+    as_script.define_value(
+        gc_context,
+        "CASEINSENSITIVE",
+        1.into(),
+        Attribute::DontEnum | Attribute::DontDelete | Attribute::ReadOnly,
+    );
+
+    as_script.define_value(
+        gc_context,
+        "DESCENDING",
+        2.into(),
+        Attribute::DontEnum | Attribute::DontDelete | Attribute::ReadOnly,
+    );
+
+    as_script.define_value(
+        gc_context,
+        "UNIQUESORT",
+        4.into(),
+        Attribute::DontEnum | Attribute::DontDelete | Attribute::ReadOnly,
+    );
+
+    as_script.define_value(
+        gc_context,
+        "RETURNINDEXEDARRAY",
+        8.into(),
+        Attribute::DontEnum | Attribute::DontDelete | Attribute::ReadOnly,
+    );
+
+    as_script.define_value(
+        gc_context,
+        "NUMERIC",
+        16.into(),
+        Attribute::DontEnum | Attribute::DontDelete | Attribute::ReadOnly,
+    );
+
+    (array, array_proto.into())
 }
 
 fn sort_compare_string<'gc>(

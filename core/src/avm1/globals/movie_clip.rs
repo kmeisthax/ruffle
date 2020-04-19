@@ -1,5 +1,6 @@
 //! MovieClip prototype
 
+use crate::avm1::function::{Executable, FunctionObject};
 use crate::avm1::globals::display_object::{self, AVM_DEPTH_BIAS, AVM_MAX_DEPTH};
 use crate::avm1::property::Attribute::*;
 use crate::avm1::return_value::ReturnValue;
@@ -88,15 +89,17 @@ pub fn hit_test<'gc>(
 pub fn create_proto<'gc>(
     gc_context: MutationContext<'gc, '_>,
     proto: Object<'gc>,
+    constr: Object<'gc>,
     fn_proto: Object<'gc>,
-) -> Object<'gc> {
-    let mut object = ScriptObject::object(gc_context, Some(proto));
+    fn_constr: Object<'gc>,
+) -> (Object<'gc>, Object<'gc>) {
+    let mut movie_clip_proto = ScriptObject::object(gc_context, Some(proto), Some(constr));
 
-    display_object::define_display_object_proto(gc_context, object, fn_proto);
+    display_object::define_display_object_proto(gc_context, movie_clip_proto, fn_proto);
 
     with_movie_clip!(
         gc_context,
-        object,
+        movie_clip_proto,
         Some(fn_proto),
         "attachMovie" => attach_movie,
         "createEmptyMovieClip" => create_empty_movie_clip,
@@ -126,7 +129,15 @@ pub fn create_proto<'gc>(
         "unloadMovie" => unload_movie
     );
 
-    object.into()
+    let movie_clip = FunctionObject::function(
+        gc_context,
+        Executable::Native(constructor),
+        Some(fn_proto),
+        Some(fn_constr),
+        Some(movie_clip_proto.into()),
+    );
+
+    (movie_clip, movie_clip_proto.into())
 }
 
 fn attach_movie<'gc>(
@@ -649,7 +660,11 @@ fn get_bounds<'gc>(
             bounds.transform(&bounds_transform)
         };
 
-        let out = ScriptObject::object(context.gc_context, Some(avm.prototypes.object));
+        let out = ScriptObject::object(
+            context.gc_context,
+            Some(avm.prototypes.object),
+            Some(avm.constructors.object),
+        );
         out.set("xMin", out_bounds.x_min.to_pixels().into(), avm, context)?;
         out.set("yMin", out_bounds.y_min.to_pixels().into(), avm, context)?;
         out.set("xMax", out_bounds.x_max.to_pixels().into(), avm, context)?;

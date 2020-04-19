@@ -147,7 +147,11 @@ impl TextFormat {
         avm1: &mut Avm1<'gc>,
         uc: &mut UpdateContext<'_, 'gc, '_>,
     ) -> Result<Object<'gc>, Error> {
-        let object = ScriptObject::object(uc.gc_context, Some(avm1.prototypes().text_format));
+        let object = ScriptObject::object(
+            uc.gc_context,
+            Some(avm1.prototypes().text_format),
+            Some(avm1.constructors().text_format),
+        );
 
         object.set(
             "font",

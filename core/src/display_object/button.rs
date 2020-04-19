@@ -139,6 +139,7 @@ impl<'gc> TDisplayObject<'gc> for Button<'gc> {
                 context.gc_context,
                 display_object,
                 Some(context.system_prototypes.button),
+                Some(context.system_constructors.button),
             );
             mc.object = Some(object.into());
         }

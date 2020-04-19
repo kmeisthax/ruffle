@@ -889,10 +889,16 @@ impl<'gc> XMLNode<'gc> {
         &mut self,
         gc_context: MutationContext<'gc, '_>,
         prototype: Option<Object<'gc>>,
+        constructor: Option<Object<'gc>>,
     ) -> Object<'gc> {
         let mut object = self.get_script_object();
         if object.is_none() {
-            object = Some(XMLObject::from_xml_node(gc_context, *self, prototype));
+            object = Some(XMLObject::from_xml_node(
+                gc_context,
+                *self,
+                prototype,
+                constructor,
+            ));
             self.introduce_script_object(gc_context, object.unwrap());
         }
 

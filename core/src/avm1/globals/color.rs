@@ -3,6 +3,7 @@
 //! TODO: This should change when `ColorTransform` changes to match Flash's representation
 //! (See GitHub #193)
 
+use crate::avm1::function::{Executable, FunctionObject};
 use crate::avm1::property::Attribute::*;
 use crate::avm1::return_value::ReturnValue;
 use crate::avm1::{Avm1, Error, Object, ScriptObject, TObject, UpdateContext, Value};
@@ -33,11 +34,13 @@ pub fn constructor<'gc>(
 pub fn create_proto<'gc>(
     gc_context: MutationContext<'gc, '_>,
     proto: Object<'gc>,
+    constr: Object<'gc>,
     fn_proto: Object<'gc>,
-) -> Object<'gc> {
-    let mut object = ScriptObject::object(gc_context, Some(proto));
+    fn_constr: Object<'gc>,
+) -> (Object<'gc>, Object<'gc>) {
+    let mut color_proto = ScriptObject::object(gc_context, Some(proto), Some(constr));
 
-    object.force_set_function(
+    color_proto.force_set_function(
         "getRGB",
         get_rgb,
         gc_context,
@@ -45,7 +48,7 @@ pub fn create_proto<'gc>(
         Some(fn_proto),
     );
 
-    object.force_set_function(
+    color_proto.force_set_function(
         "getTransform",
         get_transform,
         gc_context,
@@ -53,7 +56,7 @@ pub fn create_proto<'gc>(
         Some(fn_proto),
     );
 
-    object.force_set_function(
+    color_proto.force_set_function(
         "setRGB",
         set_rgb,
         gc_context,
@@ -61,7 +64,7 @@ pub fn create_proto<'gc>(
         Some(fn_proto),
     );
 
-    object.force_set_function(
+    color_proto.force_set_function(
         "setTransform",
         set_transform,
         gc_context,
@@ -69,7 +72,15 @@ pub fn create_proto<'gc>(
         Some(fn_proto),
     );
 
-    object.into()
+    let color = FunctionObject::function(
+        gc_context,
+        Executable::Native(constructor),
+        Some(fn_proto),
+        Some(fn_constr),
+        Some(color_proto.into()),
+    );
+
+    (color, color_proto.into())
 }
 
 /// Gets the target display object of this color transform.
@@ -116,7 +127,11 @@ fn get_transform<'gc>(
 ) -> Result<ReturnValue<'gc>, Error> {
     if let Some(target) = target(avm, context, this)? {
         let color_transform = target.color_transform();
-        let out = ScriptObject::object(context.gc_context, Some(avm.prototypes.object));
+        let out = ScriptObject::object(
+            context.gc_context,
+            Some(avm.prototypes.object),
+            avm.prototypes.object.constr(),
+        );
         out.set("ra", (color_transform.r_mult * 100.0).into(), avm, context)?;
         out.set("ga", (color_transform.g_mult * 100.0).into(), avm, context)?;
         out.set("ba", (color_transform.b_mult * 100.0).into(), avm, context)?;

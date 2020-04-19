@@ -22,6 +22,7 @@ pub struct ScriptObject<'gc>(GcCell<'gc, ScriptObjectData<'gc>>);
 
 pub struct ScriptObjectData<'gc> {
     prototype: Option<Object<'gc>>,
+    constructor: Option<Object<'gc>>,
     values: PropertyMap<Property<'gc>>,
     interfaces: Vec<Object<'gc>>,
     type_of: &'static str,
@@ -51,11 +52,13 @@ impl<'gc> ScriptObject<'gc> {
     pub fn object(
         gc_context: MutationContext<'gc, '_>,
         proto: Option<Object<'gc>>,
+        constr: Option<Object<'gc>>,
     ) -> ScriptObject<'gc> {
         ScriptObject(GcCell::allocate(
             gc_context,
             ScriptObjectData {
                 prototype: proto,
+                constructor: constr,
                 type_of: TYPE_OF_OBJECT,
                 values: PropertyMap::new(),
                 array: ArrayStorage::Properties { length: 0 },
@@ -67,11 +70,13 @@ impl<'gc> ScriptObject<'gc> {
     pub fn array(
         gc_context: MutationContext<'gc, '_>,
         proto: Option<Object<'gc>>,
+        constr: Option<Object<'gc>>,
     ) -> ScriptObject<'gc> {
         let object = ScriptObject(GcCell::allocate(
             gc_context,
             ScriptObjectData {
                 prototype: proto,
+                constructor: constr,
                 type_of: TYPE_OF_OBJECT,
                 values: PropertyMap::new(),
                 array: ArrayStorage::Vector(Vec::new()),
@@ -86,11 +91,13 @@ impl<'gc> ScriptObject<'gc> {
     pub fn object_cell(
         gc_context: MutationContext<'gc, '_>,
         proto: Option<Object<'gc>>,
+        constr: Option<Object<'gc>>,
     ) -> Object<'gc> {
         ScriptObject(GcCell::allocate(
             gc_context,
             ScriptObjectData {
                 prototype: proto,
+                constructor: constr,
                 type_of: TYPE_OF_OBJECT,
                 values: PropertyMap::new(),
                 array: ArrayStorage::Properties { length: 0 },
@@ -110,6 +117,7 @@ impl<'gc> ScriptObject<'gc> {
             gc_context,
             ScriptObjectData {
                 prototype: None,
+                constructor: None,
                 type_of: TYPE_OF_OBJECT,
                 values: PropertyMap::new(),
                 array: ArrayStorage::Properties { length: 0 },
@@ -139,10 +147,20 @@ impl<'gc> ScriptObject<'gc> {
             gc_context,
             name,
             Value::Object(FunctionObject::function(
-                gc_context, function, fn_proto, None,
+                gc_context, function, fn_proto, None, None,
             )),
             attributes.into(),
         )
+    }
+
+    /// Set the constructor of an object after-the-fact.
+    ///
+    /// This function is only provided specifically so that the cross-linked
+    /// `Object` and `Function` prototypes can be constructed at all. You
+    /// should not manually set `constr` as it is a record of how the supercall
+    /// chain should work.
+    pub fn set_constr(&mut self, gc_context: MutationContext<'gc, '_>, constr: Object<'gc>) {
+        self.0.write(gc_context).constructor = Some(constr);
     }
 
     pub fn set_type_of(&mut self, gc_context: MutationContext<'gc, '_>, type_of: &'static str) {
@@ -371,13 +389,14 @@ impl<'gc> TObject<'gc> for ScriptObject<'gc> {
         context: &mut UpdateContext<'_, 'gc, '_>,
         this: Object<'gc>,
         _args: &[Value<'gc>],
+        constructor: Object<'gc>,
     ) -> Result<Object<'gc>, Error> {
         match self.0.read().array {
             ArrayStorage::Vector(_) => {
-                Ok(ScriptObject::array(context.gc_context, Some(this)).into())
+                Ok(ScriptObject::array(context.gc_context, Some(this), Some(constructor)).into())
             }
             ArrayStorage::Properties { .. } => {
-                Ok(ScriptObject::object(context.gc_context, Some(this)).into())
+                Ok(ScriptObject::object(context.gc_context, Some(this), Some(constructor)).into())
             }
         }
     }
@@ -485,6 +504,10 @@ impl<'gc> TObject<'gc> for ScriptObject<'gc> {
 
     fn set_proto(&self, gc_context: MutationContext<'gc, '_>, prototype: Option<Object<'gc>>) {
         self.0.write(gc_context).prototype = prototype;
+    }
+
+    fn constr(&self) -> Option<Object<'gc>> {
+        self.0.read().constructor
     }
 
     /// Checks if the object has a given named property.
@@ -750,6 +773,7 @@ mod tests {
                 navigator: &mut NullNavigatorBackend::new(),
                 renderer: &mut NullRenderer::new(),
                 system_prototypes: avm.prototypes().clone(),
+                system_constructors: avm.constructors().clone(),
                 mouse_hovered_object: None,
                 mouse_position: &(Twips::new(0), Twips::new(0)),
                 drag_object: &mut None,
@@ -760,7 +784,12 @@ mod tests {
 
             root.post_instantiation(&mut avm, &mut context, root);
 
-            let object = ScriptObject::object(gc_context, Some(avm.prototypes().object)).into();
+            let object = ScriptObject::object(
+                gc_context,
+                Some(avm.prototypes().object),
+                Some(avm.constructors().object),
+            )
+            .into();
 
             let globals = avm.global_object_cell();
             avm.insert_stack_frame(GcCell::allocate(

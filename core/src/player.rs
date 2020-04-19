@@ -820,6 +820,7 @@ impl Player {
                 drag_object,
                 stage_size: (stage_width, stage_height),
                 system_prototypes: avm.prototypes().clone(),
+                system_constructors: avm.constructors().clone(),
                 player,
                 load_manager,
             };

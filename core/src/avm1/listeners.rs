@@ -56,8 +56,12 @@ macro_rules! register_listener {
 }
 
 impl<'gc> Listeners<'gc> {
-    pub fn new(gc_context: MutationContext<'gc, '_>, array_proto: Option<Object<'gc>>) -> Self {
-        Self(ScriptObject::array(gc_context, array_proto).into())
+    pub fn new(
+        gc_context: MutationContext<'gc, '_>,
+        array_proto: Option<Object<'gc>>,
+        array_constr: Option<Object<'gc>>,
+    ) -> Self {
+        Self(ScriptObject::array(gc_context, array_proto, array_constr).into())
     }
 
     pub fn add_listener(
@@ -148,9 +152,13 @@ pub struct SystemListeners<'gc> {
 }
 
 impl<'gc> SystemListeners<'gc> {
-    pub fn new(gc_context: MutationContext<'gc, '_>, array_proto: Option<Object<'gc>>) -> Self {
+    pub fn new(
+        gc_context: MutationContext<'gc, '_>,
+        array_proto: Option<Object<'gc>>,
+        array_constr: Option<Object<'gc>>,
+    ) -> Self {
         Self {
-            mouse: Listeners::new(gc_context, array_proto),
+            mouse: Listeners::new(gc_context, array_proto, array_constr),
         }
     }
 

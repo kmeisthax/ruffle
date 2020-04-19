@@ -136,18 +136,21 @@ pub trait TObject<'gc>: 'gc + Collect + Debug + Into<Object<'gc>> + Clone + Copy
     /// As the first step in object construction, the `new` method is called on
     /// the prototype to initialize an object. The prototype may construct any
     /// object implementation it wants, with itself as the new object's proto.
-    /// Then, the constructor is `call`ed with the new object as `this` to
-    /// initialize the object.
+    /// Constructor invocation does not occur in this method, but the function
+    /// that will be called is provided and should be retrievable as the new
+    /// object's `constr`.
     ///
     /// The arguments passed to the constructor are provided here; however, all
-    /// object construction should happen in `call`, not `new`. `new` exists
-    /// purely so that host objects can be constructed by the VM.
+    /// object construction should happen in the constructor's `call`, not the
+    /// prototype's `new`. `new` exists purely so that host objects can be
+    /// constructed by the VM.
     fn new(
         &self,
         avm: &mut Avm1<'gc>,
         context: &mut UpdateContext<'_, 'gc, '_>,
         this: Object<'gc>,
         args: &[Value<'gc>],
+        constructor: Object<'gc>,
     ) -> Result<Object<'gc>, Error>;
 
     /// Delete a named property from the object.
@@ -169,6 +172,15 @@ pub trait TObject<'gc>: 'gc + Collect + Debug + Into<Object<'gc>> + Clone + Copy
     /// multiple objects. It should also be accessible as `__proto__` in
     /// `set`.
     fn set_proto(&self, gc_context: MutationContext<'gc, '_>, prototype: Option<Object<'gc>>);
+
+    /// Retrieve the constructor of a given object.
+    ///
+    /// The `constr` is the function that was invoked to construct the object.
+    /// If no function was called, then there is no `constr`. This is morally
+    /// equivalent to the `constructor` property. However, that property is not
+    /// used in Flash (at least for supercalls) to avoid compatiblity problems
+    /// between extends chains that cross SWF version boundaries.
+    fn constr(&self) -> Option<Object<'gc>>;
 
     /// Define a value on an object.
     ///

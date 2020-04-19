@@ -1,5 +1,6 @@
 //! `TextFormat` impl
 
+use crate::avm1::function::{Executable, FunctionObject};
 use crate::avm1::return_value::ReturnValue;
 use crate::avm1::{Avm1, Error, Object, ScriptObject, TObject, UpdateContext, Value};
 use gc_arena::MutationContext;
@@ -89,9 +90,19 @@ pub fn constructor<'gc>(
 pub fn create_proto<'gc>(
     gc_context: MutationContext<'gc, '_>,
     proto: Object<'gc>,
-    _fn_proto: Object<'gc>,
-) -> Object<'gc> {
-    let tf_proto = ScriptObject::object(gc_context, Some(proto));
+    constr: Object<'gc>,
+    fn_proto: Object<'gc>,
+    fn_constr: Object<'gc>,
+) -> (Object<'gc>, Object<'gc>) {
+    let tf_proto = ScriptObject::object(gc_context, Some(proto), Some(constr));
 
-    tf_proto.into()
+    let text_format = FunctionObject::function(
+        gc_context,
+        Executable::Native(constructor),
+        Some(fn_proto),
+        Some(fn_constr),
+        Some(tf_proto.into()),
+    );
+
+    (text_format, tf_proto.into())
 }

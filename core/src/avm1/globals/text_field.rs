@@ -1,4 +1,4 @@
-use crate::avm1::function::Executable;
+use crate::avm1::function::{Executable, FunctionObject};
 use crate::avm1::globals::display_object;
 use crate::avm1::property::Attribute::*;
 use crate::avm1::return_value::ReturnValue;
@@ -189,15 +189,17 @@ pub fn set_word_wrap<'gc>(
 pub fn create_proto<'gc>(
     gc_context: MutationContext<'gc, '_>,
     proto: Object<'gc>,
+    constr: Object<'gc>,
     fn_proto: Object<'gc>,
-) -> Object<'gc> {
-    let mut object = ScriptObject::object(gc_context, Some(proto));
+    fn_constr: Object<'gc>,
+) -> (Object<'gc>, Object<'gc>) {
+    let mut text_field_proto = ScriptObject::object(gc_context, Some(proto), Some(constr));
 
-    display_object::define_display_object_proto(gc_context, object, fn_proto);
+    display_object::define_display_object_proto(gc_context, text_field_proto, fn_proto);
 
     with_text_field!(
         gc_context,
-        object,
+        text_field_proto,
         Some(fn_proto),
         "getNewTextFormat" => |text_field: EditText<'gc>, avm: &mut Avm1<'gc>, context: &mut UpdateContext<'_, 'gc, '_>, _args| {
             let tf = text_field.new_text_format();
@@ -216,7 +218,15 @@ pub fn create_proto<'gc>(
         }
     );
 
-    object.into()
+    let text_field = FunctionObject::function(
+        gc_context,
+        Executable::Native(constructor),
+        Some(fn_proto),
+        Some(fn_constr),
+        Some(text_field_proto.into()),
+    );
+
+    (text_field, text_field_proto.into())
 }
 
 pub fn attach_virtual_properties<'gc>(gc_context: MutationContext<'gc, '_>, object: Object<'gc>) {

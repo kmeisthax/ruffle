@@ -32,36 +32,25 @@ pub fn boolean<'gc>(
     Ok(ret_value.into())
 }
 
-pub fn create_boolean_object<'gc>(
-    gc_context: MutationContext<'gc, '_>,
-    boolean_proto: Option<Object<'gc>>,
-    fn_proto: Option<Object<'gc>>,
-) -> Object<'gc> {
-    FunctionObject::function(
-        gc_context,
-        Executable::Native(boolean),
-        fn_proto,
-        boolean_proto,
-    )
-}
-
-/// Creates `Boolean.prototype`.
+/// Creates `Boolean` and `Boolean.prototype`.
 pub fn create_proto<'gc>(
     gc_context: MutationContext<'gc, '_>,
     proto: Object<'gc>,
+    constr: Object<'gc>,
     fn_proto: Object<'gc>,
-) -> Object<'gc> {
-    let boolean_proto = ValueObject::empty_box(gc_context, Some(proto));
-    let mut object = boolean_proto.as_script_object().unwrap();
+    fn_constr: Object<'gc>,
+) -> (Object<'gc>, Object<'gc>) {
+    let boolean_proto = ValueObject::empty_box(gc_context, Some(proto), Some(constr));
+    let mut as_script = boolean_proto.as_script_object().unwrap();
 
-    object.force_set_function(
+    as_script.force_set_function(
         "toString",
         to_string,
         gc_context,
         EnumSet::empty(),
         Some(fn_proto),
     );
-    object.force_set_function(
+    as_script.force_set_function(
         "valueOf",
         value_of,
         gc_context,
@@ -69,7 +58,15 @@ pub fn create_proto<'gc>(
         Some(fn_proto),
     );
 
-    boolean_proto
+    let boolean = FunctionObject::function(
+        gc_context,
+        Executable::Native(boolean),
+        Some(fn_proto),
+        Some(fn_constr),
+        Some(boolean_proto),
+    );
+
+    (boolean, boolean_proto)
 }
 
 pub fn to_string<'gc>(

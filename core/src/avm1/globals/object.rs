@@ -299,6 +299,7 @@ pub fn create_object_object<'gc>(
         gc_context,
         Executable::Native(constructor),
         Some(fn_proto),
+        None,
         Some(proto),
     );
     let mut object = object_function.as_script_object().unwrap();

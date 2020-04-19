@@ -20,10 +20,11 @@ impl<'gc> XMLObject<'gc> {
     pub fn empty_node(
         gc_context: MutationContext<'gc, '_>,
         proto: Option<Object<'gc>>,
+        constr: Option<Object<'gc>>,
     ) -> Object<'gc> {
         let empty_document = XMLDocument::new(gc_context);
         let mut xml_node = XMLNode::new_text(gc_context, "", empty_document);
-        let base_object = ScriptObject::object(gc_context, proto);
+        let base_object = ScriptObject::object(gc_context, proto, constr);
         let object = XMLObject(base_object, xml_node).into();
 
         xml_node.introduce_script_object(gc_context, object);
@@ -36,8 +37,9 @@ impl<'gc> XMLObject<'gc> {
         gc_context: MutationContext<'gc, '_>,
         xml_node: XMLNode<'gc>,
         proto: Option<Object<'gc>>,
+        constr: Option<Object<'gc>>,
     ) -> Object<'gc> {
-        XMLObject(ScriptObject::object(gc_context, proto), xml_node).into()
+        XMLObject(ScriptObject::object(gc_context, proto, constr), xml_node).into()
     }
 
     fn base(&self) -> ScriptObject<'gc> {
@@ -105,8 +107,13 @@ impl<'gc> TObject<'gc> for XMLObject<'gc> {
         context: &mut UpdateContext<'_, 'gc, '_>,
         this: Object<'gc>,
         _args: &[Value<'gc>],
+        constructor: Object<'gc>,
     ) -> Result<Object<'gc>, Error> {
-        Ok(XMLObject::empty_node(context.gc_context, Some(this)))
+        Ok(XMLObject::empty_node(
+            context.gc_context,
+            Some(this),
+            Some(constructor),
+        ))
     }
 
     fn delete(
@@ -171,6 +178,10 @@ impl<'gc> TObject<'gc> for XMLObject<'gc> {
 
     fn set_proto(&self, gc_context: MutationContext<'gc, '_>, prototype: Option<Object<'gc>>) {
         self.base().set_proto(gc_context, prototype);
+    }
+
+    fn constr(&self) -> Option<Object<'gc>> {
+        self.base().constr()
     }
 
     fn has_property(

@@ -45,17 +45,17 @@ impl<'gc> ValueObject<'gc> {
         if let Value::Object(ob) = value {
             ob
         } else {
-            let proto = match &value {
-                Value::Bool(_) => Some(avm.prototypes.boolean),
-                Value::Number(_) => Some(avm.prototypes.number),
-                Value::String(_) => Some(avm.prototypes.string),
-                _ => None,
+            let (proto, constr) = match &value {
+                Value::Bool(_) => (Some(avm.prototypes.boolean), Some(avm.constructors.boolean)),
+                Value::Number(_) => (Some(avm.prototypes.number), Some(avm.constructors.number)),
+                Value::String(_) => (Some(avm.prototypes.string), Some(avm.constructors.string)),
+                _ => (None, None),
             };
 
             let obj = ValueObject(GcCell::allocate(
                 context.gc_context,
                 ValueObjectData {
-                    base: ScriptObject::object(context.gc_context, proto),
+                    base: ScriptObject::object(context.gc_context, proto, constr),
                     value: Value::Undefined,
                 },
             ));
@@ -85,11 +85,12 @@ impl<'gc> ValueObject<'gc> {
     pub fn empty_box(
         gc_context: MutationContext<'gc, '_>,
         proto: Option<Object<'gc>>,
+        constr: Option<Object<'gc>>,
     ) -> Object<'gc> {
         ValueObject(GcCell::allocate(
             gc_context,
             ValueObjectData {
-                base: ScriptObject::object(gc_context, proto),
+                base: ScriptObject::object(gc_context, proto, constr),
                 value: Value::Undefined,
             },
         ))
@@ -173,8 +174,13 @@ impl<'gc> TObject<'gc> for ValueObject<'gc> {
         context: &mut UpdateContext<'_, 'gc, '_>,
         this: Object<'gc>,
         _args: &[Value<'gc>],
+        constructor: Object<'gc>,
     ) -> Result<Object<'gc>, Error> {
-        Ok(ValueObject::empty_box(context.gc_context, Some(this)))
+        Ok(ValueObject::empty_box(
+            context.gc_context,
+            Some(this),
+            Some(constructor),
+        ))
     }
 
     fn delete(
@@ -252,6 +258,10 @@ impl<'gc> TObject<'gc> for ValueObject<'gc> {
             .write(gc_context)
             .base
             .set_proto(gc_context, prototype);
+    }
+
+    fn constr(&self) -> Option<Object<'gc>> {
+        self.0.read().base.constr()
     }
 
     fn has_property(

@@ -681,7 +681,7 @@ mod test {
             assert_eq!(f.to_primitive_num(avm, context).unwrap(), f);
             assert_eq!(n.to_primitive_num(avm, context).unwrap(), n);
 
-            let (protos, global, _) = create_globals(context.gc_context);
+            let (protos, constrs, global, _) = create_globals(context.gc_context);
             let vglobal = Value::Object(global);
 
             assert_eq!(vglobal.to_primitive_num(avm, context).unwrap(), u);
@@ -699,10 +699,15 @@ mod test {
                 context.gc_context,
                 Executable::Native(value_of_impl),
                 Some(protos.function),
+                Some(constrs.function),
                 None,
             );
 
-            let o = ScriptObject::object_cell(context.gc_context, Some(protos.object));
+            let o = ScriptObject::object_cell(
+                context.gc_context,
+                Some(protos.object),
+                Some(constrs.object),
+            );
             o.define_value(
                 context.gc_context,
                 "valueOf",

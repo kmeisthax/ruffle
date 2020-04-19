@@ -35,8 +35,9 @@ impl<'gc> StageObject<'gc> {
         gc_context: MutationContext<'gc, '_>,
         display_object: DisplayObject<'gc>,
         proto: Option<Object<'gc>>,
+        constr: Option<Object<'gc>>,
     ) -> Self {
-        let mut base = ScriptObject::object(gc_context, proto);
+        let mut base = ScriptObject::object(gc_context, proto, constr);
 
         //TODO: Do other display node objects have different typestrings?
         base.set_type_of(gc_context, TYPE_OF_MOVIE_CLIP);
@@ -164,9 +165,10 @@ impl<'gc> TObject<'gc> for StageObject<'gc> {
         context: &mut UpdateContext<'_, 'gc, '_>,
         this: Object<'gc>,
         args: &[Value<'gc>],
+        constructor: Object<'gc>,
     ) -> Result<Object<'gc>, Error> {
         //TODO: Create a StageObject of some kind
-        self.base.new(avm, context, this, args)
+        self.base.new(avm, context, this, args, constructor)
     }
 
     fn delete(
@@ -184,6 +186,10 @@ impl<'gc> TObject<'gc> for StageObject<'gc> {
 
     fn set_proto(&self, gc_context: MutationContext<'gc, '_>, prototype: Option<Object<'gc>>) {
         self.base.set_proto(gc_context, prototype);
+    }
+
+    fn constr(&self) -> Option<Object<'gc>> {
+        self.base.constr()
     }
 
     fn define_value(

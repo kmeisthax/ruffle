@@ -525,8 +525,11 @@ impl<'gc> Loader<'gc> {
                             _ => unreachable!(),
                         };
 
-                        let object =
-                            node.script_object(uc.gc_context, Some(avm.prototypes().xml_node));
+                        let object = node.script_object(
+                            uc.gc_context,
+                            Some(avm.prototypes().xml_node),
+                            Some(avm.constructors().xml_node),
+                        );
                         avm.insert_stack_frame_for_method(
                             active_clip,
                             object,
@@ -563,8 +566,11 @@ impl<'gc> Loader<'gc> {
                             _ => unreachable!(),
                         };
 
-                        let object =
-                            node.script_object(uc.gc_context, Some(avm.prototypes().xml_node));
+                        let object = node.script_object(
+                            uc.gc_context,
+                            Some(avm.prototypes().xml_node),
+                            Some(avm.constructors().xml_node),
+                        );
                         avm.insert_stack_frame_for_method(
                             active_clip,
                             object,
