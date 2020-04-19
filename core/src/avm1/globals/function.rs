@@ -122,13 +122,11 @@ pub fn finish_function_object<'gc>(
         .unwrap()
         .set_constr(gc_context, constr);
 
-    let function = FunctionObject::function(
+    FunctionObject::function(
         gc_context,
         Executable::Native(constructor),
         Some(function_proto),
         None,
         Some(function_proto),
-    );
-
-    function
+    )
 }
