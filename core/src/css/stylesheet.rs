@@ -14,19 +14,23 @@ use gc_arena::Collect;
 /// can affect a particular element.
 ///
 /// The `N` parameter is the enumerated type which constitutes all property
-/// names we care about.
+/// names we care about. The `K` parameter enumerates all CSS keywords we
+/// recognize. Any CSS properties or values outside those two ranges will be
+/// silently ignored by CSS parsing.
 #[derive(Clone, Debug, Collect)]
 #[collect(no_drop)]
-pub struct Property<N>(N, Value);
+pub struct Property<N, K>(N, Value<K>);
 
 /// A CSS Rule consists of a series of properties applied to elements matching
 /// a particular selector.
 ///
 /// The `N` parameter is the enumerated type which constitutes all property
-/// names we care about.
+/// names we care about. The `K` parameter enumerates all CSS keywords we
+/// recognize. Any CSS properties or values outside those two ranges will be
+/// silently ignored by CSS parsing.
 #[derive(Clone, Debug, Collect)]
 #[collect(no_drop)]
-pub struct Rule<N> {
+pub struct Rule<N, K> {
     /// The selector that determines if this rule matches an element.
     ///
     /// Combinators are evaluated right-to-left against a candidate matching
@@ -41,13 +45,13 @@ pub struct Rule<N> {
     ///
     /// The `bool` indicates if the property is `!important`. Important
     /// properties override non-important properties regardless of specificity.
-    properties: Vec<(Property<N>, bool)>,
+    properties: Vec<(Property<N, K>, bool)>,
 
     /// The index of this rule within it's contained stylesheet.
     rule_index: u32,
 }
 
-impl<N> Rule<N> {
+impl<N, K> Rule<N, K> {
     /// Determine if a rule applies to a node.
     ///
     /// A node matching a rule does not in and of itself determine if the
@@ -87,9 +91,11 @@ impl<N> Rule<N> {
 /// A stylesheet consists of all rules declared in the stylesheet.
 ///
 /// The `N` parameter is the enumerated type which constitutes all property
-/// names we care about.
+/// names we care about. The `K` parameter enumerates all CSS keywords we
+/// recognize. Any CSS properties or values outside those two ranges will be
+/// silently ignored by CSS parsing.
 #[derive(Clone, Debug, Collect)]
 #[collect(no_drop)]
-pub struct Stylesheet<N> {
-    rules: Vec<Rule<N>>,
+pub struct Stylesheet<N, K> {
+    rules: Vec<Rule<N, K>>,
 }

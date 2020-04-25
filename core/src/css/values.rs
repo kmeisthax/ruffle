@@ -26,9 +26,12 @@ pub enum Unit {
 }
 
 /// All possible value types a property can be assigned.
+///
+/// The `K` parameter indicates a type which constitutes a CSS keyword that we
+/// care about.
 #[derive(Clone, Debug, Collect)]
 #[collect(no_drop)]
-pub enum Value {
+pub enum Value<K> {
     /// The CSS value is not specified here and should be taken from the
     /// inheritied properties of the parent's computed style.
     Inherit,
@@ -37,6 +40,9 @@ pub enum Value {
     /// default value that would be present on this element had this property
     /// not been specified in any applicable CSS rule.
     Initial,
+
+    /// A valid CSS keyword.
+    Keyword(K),
 
     /// The CSS value is a quoted string.
     Str(String),

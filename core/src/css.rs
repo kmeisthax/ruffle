@@ -25,4 +25,13 @@ pub enum Name {
     FontWeight,
 }
 
-pub type CSSStylesheet = stylesheet::Stylesheet<Name>;
+/// The list of keyword properties we consider.
+#[derive(Clone, Debug, Collect)]
+#[collect(no_drop)]
+pub enum Keyword {
+    Block,
+    Inline,
+    InlineBlock,
+}
+
+pub type CSSStylesheet = stylesheet::Stylesheet<Name, Keyword>;
