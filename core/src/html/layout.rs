@@ -545,7 +545,7 @@ impl<'a, 'gc> LayoutContext<'a, 'gc> {
 #[derive(Clone, Debug, Collect)]
 #[collect(no_drop)]
 pub struct LayoutBox<'gc> {
-    /// The rectangle corresponding to the outer boundaries of the
+    /// The rectangle corresponding to the outer boundaries of the current box.
     bounds: BoxBounds<Twips>,
 
     /// What content is contained by the content box.
