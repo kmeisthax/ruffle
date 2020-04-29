@@ -1,49 +1,24 @@
-//! CSS parsing and evaluation
-
-use gc_arena::Collect;
+//! CSS parsing and evaluation engine
+//!
+//! This module is generic with respects to the embedding environment that
+//! wishes to use CSS. Most types provided require two parameters: an
+//! enumeration of all valid property names, and an enumeration of all valid
+//! CSS keywords. Builtin keywords and literal formats are handled by the
+//! `Value` enumeration in this module.
+//!
+//! The general process of working with CSS is as follows:
+//!
+//! 1. Parse the CSS stylesheet you wish to use, or construct one in-memory
+//! 2. Compute styles for a given `XMLNode`
+//! 3. Cascade computed styles to children from parent
+//! 4. Inspect the result for property values you care about and take
+//! appropriate layout action.
 
 mod combinators;
 mod specificity;
 mod stylesheet;
 mod values;
 
-/// The list of CSS property names that we care about.
-///
-/// Note that a couple of rules apply to what constitutes a property:
-///
-/// 1. Composite properties such as `font` do not exist separately. Instead,
-/// they are broken into their individual properties at parse time and resolved
-/// separately.
-/// 2. Properties not enumerated here will be silently dropped at parse time.
-/// 3. The values of these properties are not stored here. See `Value`.
-#[derive(Clone, Debug, Collect, PartialEq, Eq, Hash)]
-#[collect(no_drop)]
-pub enum Name {
-    Display,
-    FontFamily,
-    FontSize,
-    FontVariant,
-    FontWeight,
-}
-
-/// The list of keyword properties we consider.
-#[derive(Clone, Debug, Collect, PartialEq, Eq, Hash)]
-#[collect(no_drop)]
-pub enum Keyword {
-    Block,
-    Inline,
-    InlineBlock,
-}
-
-pub type CSSStylesheet = stylesheet::Stylesheet<Name, Keyword>;
-
-pub type CSSRule = stylesheet::Rule<Name, Keyword>;
-
-pub type CSSProperty = stylesheet::Property<Name, Keyword>;
-
-pub type CSSValue = values::Value<Keyword>;
-
-pub type CSSComputedStyle = stylesheet::ComputedStyle<Name, Keyword>;
-
 pub use combinators::Combinator;
-pub use user_agent::ua_stylesheet;
+pub use stylesheet::{ComputedStyle, Property, Rule, Stylesheet};
+pub use values::Value;
