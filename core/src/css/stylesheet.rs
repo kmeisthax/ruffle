@@ -1,6 +1,7 @@
 //! Stylesheet object model... objects
 
 use crate::css::combinators::Combinator;
+use crate::css::property::{Property, PropertyName};
 use crate::css::specificity::Specificity;
 use crate::css::values::Value;
 use crate::xml::XMLNode;
@@ -8,28 +9,6 @@ use gc_arena::Collect;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use std::hash::Hash;
-
-/// A CSS property is a combination of a name and the value the property should
-/// be set to.
-///
-/// Multiple properties may apply for a particular name on a particular
-/// element. Each name needs to be resolved to a single value before that value
-/// can affect a particular element.
-///
-/// The `N` parameter is the enumerated type which constitutes all property
-/// names we care about. The `K` parameter enumerates all CSS keywords we
-/// recognize. Any CSS properties or values outside those two ranges will be
-/// silently ignored by CSS parsing.
-#[derive(Clone, Debug, Collect)]
-#[collect(no_drop)]
-pub struct Property<N, K>(N, Value<K>);
-
-impl<N, K> Property<N, K> {
-    ///Create a new property declaration.
-    pub fn new(name: N, value: Value<K>) -> Self {
-        Self(name, value)
-    }
-}
 
 /// A CSS Rule consists of a series of properties applied to elements matching
 /// a particular selector.
@@ -40,7 +19,10 @@ impl<N, K> Property<N, K> {
 /// silently ignored by CSS parsing.
 #[derive(Clone, Debug, Collect)]
 #[collect(no_drop)]
-pub struct Rule<N, K> {
+pub struct Rule<N, K>
+where
+    N: PropertyName<K>,
+{
     /// The selector that determines if this rule matches an element.
     ///
     /// Combinators are evaluated right-to-left against a candidate matching
@@ -61,7 +43,10 @@ pub struct Rule<N, K> {
     rule_index: u32,
 }
 
-impl<N, K> Rule<N, K> {
+impl<N, K> Rule<N, K>
+where
+    N: PropertyName<K>,
+{
     /// Construct a rule from a list of combinators.
     pub fn from_combinators(combinators: Vec<Combinator>) -> Self {
         Rule {
@@ -130,17 +115,26 @@ impl<N, K> Rule<N, K> {
 /// silently ignored by CSS parsing.
 #[derive(Clone, Debug, Collect)]
 #[collect(no_drop)]
-pub struct Stylesheet<N, K> {
+pub struct Stylesheet<N, K>
+where
+    N: PropertyName<K>,
+{
     rules: Vec<Rule<N, K>>,
 }
 
-impl<N, K> Default for Stylesheet<N, K> {
+impl<N, K> Default for Stylesheet<N, K>
+where
+    N: PropertyName<K>,
+{
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<N, K> Stylesheet<N, K> {
+impl<N, K> Stylesheet<N, K>
+where
+    N: PropertyName<K>,
+{
     pub fn new() -> Self {
         Stylesheet { rules: Vec::new() }
     }
@@ -155,7 +149,7 @@ impl<N, K> Stylesheet<N, K> {
 
 impl<N, K> Stylesheet<N, K>
 where
-    N: Clone + Eq + Hash,
+    N: PropertyName<K>,
     K: Clone,
 {
     /// Compute the styles that would apply to a given node with this
@@ -194,9 +188,14 @@ where
 /// An enumeration of all properties and values applied to a particular style.
 #[derive(Clone, Debug, Collect)]
 #[collect(no_drop)]
-pub struct ComputedStyle<N, K>(HashMap<N, Value<K>>);
+pub struct ComputedStyle<N, K>(HashMap<N, Value<K>>)
+where
+    N: PropertyName<K>;
 
-impl<N, K> Default for ComputedStyle<N, K> {
+impl<N, K> Default for ComputedStyle<N, K>
+where
+    N: PropertyName<K>,
+{
     fn default() -> Self {
         Self(HashMap::new())
     }
@@ -204,7 +203,7 @@ impl<N, K> Default for ComputedStyle<N, K> {
 
 impl<N, K> ComputedStyle<N, K>
 where
-    N: Eq + Hash,
+    N: PropertyName<K>,
     K: Clone,
 {
     /// Retrieve a value from the computed style.
@@ -220,5 +219,53 @@ where
     /// If the property has already been set, it will be overridden.
     fn add_property(&mut self, property: Property<N, K>) {
         self.0.insert(property.0, property.1);
+    }
+
+    /// Given a name, check if the property in question is unresolved, and if
+    /// so, attempt to resolve it.
+    ///
+    /// If the property is already resolved, or cannot be resolved with the
+    /// current information, then this function returns `None`.
+    fn resolve_unset(name: &N, value: &Value<K>, parent_value: &Value<K>) -> Option<Value<K>> {
+        let parent_value = match parent_value {
+            Value::Initial | Value::Inherit | Value::Unset => Cow::Owned(name.initial_value()),
+            _ => Cow::Borrowed(parent_value),
+        };
+
+        match (value, name.is_inherited()) {
+            (Value::Inherit, _) | (Value::Unset, true) => Some(parent_value.into_owned()),
+            (Value::Initial, _) | (Value::Unset, false) => Some(name.initial_value()),
+            _ => None,
+        }
+    }
+
+    /// Cascade properties from a parent's computed styles into the child.
+    ///
+    /// This function will attempt to resolve any property mentioned in either
+    /// the parent or the child. Properties not mentioned in either will remain
+    /// `unset`. If the `parent` is `None`, indicating that we are at the root
+    /// of the layout hierarchy, then all values will resolve as `initial`.
+    /// This behavior also applies for properties which are not mentioned in
+    /// either parent or child.
+    fn cascade(&mut self, parent: Option<&Self>) {
+        if let Some(parent) = parent {
+            for (name, parent_value) in parent.0.iter() {
+                if let Some(cascade) = Self::resolve_unset(name, &self.get(name), parent_value) {
+                    self.0.insert(name.clone(), cascade);
+                }
+            }
+        }
+
+        for (name, value) in self.0.iter_mut() {
+            if let Some(cascade) = Self::resolve_unset(
+                name,
+                value,
+                &parent
+                    .map(|p| p.get(name))
+                    .unwrap_or(Cow::Owned(Value::Initial)),
+            ) {
+                *value = cascade;
+            }
+        }
     }
 }

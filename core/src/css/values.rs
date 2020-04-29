@@ -80,3 +80,9 @@ pub enum Value<K> {
     /// fonts".
     Font(Vec<String>),
 }
+
+impl<K> From<K> for Value<K> {
+    fn from(k: K) -> Self {
+        Self::Keyword(k)
+    }
+}

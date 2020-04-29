@@ -15,10 +15,12 @@
 //! appropriate layout action.
 
 mod combinators;
+mod property;
 mod specificity;
 mod stylesheet;
 mod values;
 
 pub use combinators::Combinator;
-pub use stylesheet::{ComputedStyle, Property, Rule, Stylesheet};
+pub use property::{Property, PropertyName};
+pub use stylesheet::{ComputedStyle, Rule, Stylesheet};
 pub use values::Value;
