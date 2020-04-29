@@ -16,9 +16,10 @@ mod values;
 /// separately.
 /// 2. Properties not enumerated here will be silently dropped at parse time.
 /// 3. The values of these properties are not stored here. See `Value`.
-#[derive(Clone, Debug, Collect)]
+#[derive(Clone, Debug, Collect, PartialEq, Eq, Hash)]
 #[collect(no_drop)]
 pub enum Name {
+    Display,
     FontFamily,
     FontSize,
     FontVariant,
@@ -26,7 +27,7 @@ pub enum Name {
 }
 
 /// The list of keyword properties we consider.
-#[derive(Clone, Debug, Collect)]
+#[derive(Clone, Debug, Collect, PartialEq, Eq, Hash)]
 #[collect(no_drop)]
 pub enum Keyword {
     Block,
@@ -35,3 +36,14 @@ pub enum Keyword {
 }
 
 pub type CSSStylesheet = stylesheet::Stylesheet<Name, Keyword>;
+
+pub type CSSRule = stylesheet::Rule<Name, Keyword>;
+
+pub type CSSProperty = stylesheet::Property<Name, Keyword>;
+
+pub type CSSValue = values::Value<Keyword>;
+
+pub type CSSComputedStyle = stylesheet::ComputedStyle<Name, Keyword>;
+
+pub use combinators::Combinator;
+pub use user_agent::ua_stylesheet;

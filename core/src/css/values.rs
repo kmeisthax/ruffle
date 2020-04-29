@@ -41,6 +41,11 @@ pub enum Value<K> {
     /// not been specified in any applicable CSS rule.
     Initial,
 
+    /// The CSS value is not specified here. Whether or not it should be taken
+    /// from the parent element's computed style or a default value should be
+    /// used is determined by the kind of property in use.
+    Unset,
+
     /// A valid CSS keyword.
     Keyword(K),
 

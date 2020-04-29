@@ -5,6 +5,9 @@ use crate::css::specificity::Specificity;
 use crate::css::values::Value;
 use crate::xml::XMLNode;
 use gc_arena::Collect;
+use std::borrow::Cow;
+use std::collections::{BTreeMap, HashMap};
+use std::hash::Hash;
 
 /// A CSS property is a combination of a name and the value the property should
 /// be set to.
@@ -20,6 +23,13 @@ use gc_arena::Collect;
 #[derive(Clone, Debug, Collect)]
 #[collect(no_drop)]
 pub struct Property<N, K>(N, Value<K>);
+
+impl<N, K> Property<N, K> {
+    ///Create a new property declaration.
+    pub fn new(name: N, value: Value<K>) -> Self {
+        Self(name, value)
+    }
+}
 
 /// A CSS Rule consists of a series of properties applied to elements matching
 /// a particular selector.
@@ -52,6 +62,26 @@ pub struct Rule<N, K> {
 }
 
 impl<N, K> Rule<N, K> {
+    /// Construct a rule from a list of combinators.
+    pub fn from_combinators(combinators: Vec<Combinator>) -> Self {
+        Rule {
+            selector: combinators,
+            properties: Vec::new(),
+            rule_index: 0,
+        }
+    }
+
+    /// Set the rule index of the rule.
+    ///
+    /// The rule index is used for specificity calculations.
+    fn set_rule_index(&mut self, index: u32) {
+        self.rule_index = index;
+    }
+
+    pub fn add_property(&mut self, property: Property<N, K>, is_important: bool) {
+        self.properties.push((property, is_important));
+    }
+
     /// Determine if a rule applies to a node.
     ///
     /// A node matching a rule does not in and of itself determine if the
@@ -86,6 +116,10 @@ impl<N, K> Rule<N, K> {
 
         specificity
     }
+
+    fn iter_properties(&self) -> impl Iterator<Item = &(Property<N, K>, bool)> {
+        self.properties.iter()
+    }
 }
 
 /// A stylesheet consists of all rules declared in the stylesheet.
@@ -98,4 +132,93 @@ impl<N, K> Rule<N, K> {
 #[collect(no_drop)]
 pub struct Stylesheet<N, K> {
     rules: Vec<Rule<N, K>>,
+}
+
+impl<N, K> Default for Stylesheet<N, K> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<N, K> Stylesheet<N, K> {
+    pub fn new() -> Self {
+        Stylesheet { rules: Vec::new() }
+    }
+
+    /// Add a rule to the stylesheet.
+    pub fn append_rule(&mut self, mut rule: Rule<N, K>) {
+        rule.set_rule_index(self.rules.len() as u32);
+
+        self.rules.push(rule);
+    }
+}
+
+impl<N, K> Stylesheet<N, K>
+where
+    N: Clone + Eq + Hash,
+    K: Clone,
+{
+    /// Compute the styles that would apply to a given node with this
+    /// stylesheet.
+    pub fn compute_styles<'gc>(&self, node: XMLNode<'gc>) -> ComputedStyle<N, K> {
+        let mut computed_style = ComputedStyle::default();
+        let mut sorted_rules = BTreeMap::new();
+
+        for (index, rule) in self.rules.iter().enumerate() {
+            if rule.applies_to(node) {
+                sorted_rules.insert(rule.specificity(), index);
+            }
+        }
+
+        for (_specificity, index) in sorted_rules.iter() {
+            let rule = self.rules.get(*index).unwrap();
+            for property in rule
+                .iter_properties()
+                .filter_map(|(p, imp)| if *imp { Some(p) } else { None })
+            {
+                computed_style.add_property(property.clone());
+            }
+
+            for property in rule
+                .iter_properties()
+                .filter_map(|(p, imp)| if !*imp { Some(p) } else { None })
+            {
+                computed_style.add_property(property.clone());
+            }
+        }
+
+        computed_style
+    }
+}
+
+/// An enumeration of all properties and values applied to a particular style.
+#[derive(Clone, Debug, Collect)]
+#[collect(no_drop)]
+pub struct ComputedStyle<N, K>(HashMap<N, Value<K>>);
+
+impl<N, K> Default for ComputedStyle<N, K> {
+    fn default() -> Self {
+        Self(HashMap::new())
+    }
+}
+
+impl<N, K> ComputedStyle<N, K>
+where
+    N: Eq + Hash,
+    K: Clone,
+{
+    /// Retrieve a value from the computed style.
+    fn get(&self, name: &N) -> Cow<Value<K>> {
+        match self.0.get(name) {
+            Some(val) => Cow::Borrowed(val),
+            None => Cow::Owned(Value::Unset),
+        }
+    }
+
+    /// Add a property to the computed style.
+    ///
+    /// If the property has already been set, it will be overridden.
+    fn add_property(&mut self, property: Property<N, K>) {
+        self.0.insert(property.0, property.1);
+    }
 }
