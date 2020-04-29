@@ -2,11 +2,10 @@
 use crate::avm1::globals::text_field::attach_virtual_properties;
 use crate::avm1::{Avm1, Object, StageObject, Value};
 use crate::context::{RenderContext, UpdateContext};
-use crate::css::CSSStylesheet;
 use crate::display_object::{DisplayObjectBase, TDisplayObject};
 use crate::drawing::Drawing;
 use crate::font::{round_down_to_pixel, Glyph};
-use crate::html::{BoxBounds, FormatSpans, LayoutBox, TextFormat};
+use crate::html::{BoxBounds, CSSStylesheet, FormatSpans, LayoutBox, TextFormat};
 use crate::prelude::*;
 use crate::shape_utils::DrawCommand;
 use crate::tag_utils::SwfMovie;

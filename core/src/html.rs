@@ -9,6 +9,7 @@ mod dimensions;
 mod iterators;
 mod layout;
 mod text_format;
+mod ua_stylesheet;
 
 pub use css_types::CSSStylesheet;
 pub use dimensions::BoxBounds;
@@ -16,6 +17,7 @@ pub use dimensions::Position;
 pub use dimensions::Size;
 pub use layout::LayoutBox;
 pub use text_format::{FormatSpans, TextFormat, TextSpan};
+pub use ua_stylesheet::ua_stylesheet;
 
 #[cfg(test)]
 mod test;
