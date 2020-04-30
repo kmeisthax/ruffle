@@ -20,6 +20,9 @@ mod specificity;
 mod stylesheet;
 mod values;
 
+#[cfg(test)]
+mod tests;
+
 pub use combinators::Combinator;
 pub use property::{Property, PropertyName};
 pub use stylesheet::{ComputedStyle, Rule, Stylesheet};

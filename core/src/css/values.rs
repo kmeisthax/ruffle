@@ -3,7 +3,7 @@
 use gc_arena::Collect;
 
 /// All valid CSS unit types.
-#[derive(Clone, Debug, Collect)]
+#[derive(Clone, Debug, Collect, PartialEq, Eq)]
 #[collect(no_drop)]
 pub enum Unit {
     /// Units of pixels.
@@ -29,7 +29,7 @@ pub enum Unit {
 ///
 /// The `K` parameter indicates a type which constitutes a CSS keyword that we
 /// care about.
-#[derive(Clone, Debug, Collect)]
+#[derive(Clone, Debug, Collect, PartialEq)]
 #[collect(no_drop)]
 pub enum Value<K> {
     /// The CSS value is not specified here and should be taken from the

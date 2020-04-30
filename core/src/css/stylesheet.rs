@@ -206,11 +206,24 @@ where
     N: PropertyName<K>,
     K: Clone,
 {
-    /// Retrieve a value from the computed style.
+    /// Retrieve the raw value of a particular property on this computed style.
     fn get(&self, name: &N) -> Cow<Value<K>> {
         match self.0.get(name) {
             Some(val) => Cow::Borrowed(val),
             None => Cow::Owned(Value::Unset),
+        }
+    }
+
+    /// Retrieve the value of a particular property, forcing it to not be
+    /// `unset`, `initial`, or `inherit`.
+    ///
+    /// You should use this function to retrieve property values from a
+    /// computed style *after* cascading.
+    pub fn get_defined(&self, name: &N) -> Cow<Value<K>> {
+        let undef = self.get(name);
+        match undef.as_ref() {
+            Value::Unset | Value::Initial | Value::Inherit => Cow::Owned(name.initial_value()),
+            _ => undef,
         }
     }
 
@@ -247,7 +260,7 @@ where
     /// of the layout hierarchy, then all values will resolve as `initial`.
     /// This behavior also applies for properties which are not mentioned in
     /// either parent or child.
-    fn cascade(&mut self, parent: Option<&Self>) {
+    pub fn cascade(&mut self, parent: Option<&Self>) {
         if let Some(parent) = parent {
             for (name, parent_value) in parent.0.iter() {
                 if let Some(cascade) = Self::resolve_unset(name, &self.get(name), parent_value) {
