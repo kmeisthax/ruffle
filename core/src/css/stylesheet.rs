@@ -230,7 +230,7 @@ where
     /// Add a property to the computed style.
     ///
     /// If the property has already been set, it will be overridden.
-    fn add_property(&mut self, property: Property<N, K>) {
+    pub fn add_property(&mut self, property: Property<N, K>) {
         self.0.insert(property.0, property.1);
     }
 
