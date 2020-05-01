@@ -3,6 +3,7 @@
 use crate::avm1::xml_attributes_object::XMLAttributesObject;
 use crate::avm1::xml_object::XMLObject;
 use crate::avm1::{Object, TObject};
+use crate::css::StyleNode;
 use crate::xml;
 use crate::xml::{Error, Step, XMLDocument, XMLName};
 use gc_arena::{Collect, GcCell, MutationContext};
@@ -1374,5 +1375,37 @@ impl<'gc> fmt::Debug for XMLNode<'gc> {
                 .field("contents", contents)
                 .finish(),
         }
+    }
+}
+
+impl<'gc> StyleNode<'gc> for XMLNode<'gc> {
+    fn is_element(&self, tag_name: &str) -> bool {
+        match self.tag_name() {
+            Some(my_tag_name) => my_tag_name == XMLName::from_str(tag_name),
+            _ => false,
+        }
+    }
+
+    fn has_class(&self, class: &str) -> bool {
+        if let Some(class_list) = self.attribute_value(&XMLName::from_str("class")) {
+            for my_class in class_list.split(' ') {
+                if class == my_class {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
+    fn has_id(&self, id: &str) -> bool {
+        match self.attribute_value(&XMLName::from_str("id")) {
+            Some(my_id) => id == my_id,
+            _ => false,
+        }
+    }
+
+    fn parent(&self) -> Option<Self> {
+        XMLNode::parent(*self).ok().and_then(|p| p)
     }
 }

@@ -1,10 +1,9 @@
 //! Stylesheet object model... objects
 
-use crate::css::combinators::Combinator;
+use crate::css::combinators::{Combinator, StyleNode};
 use crate::css::property::{Property, PropertyName};
 use crate::css::specificity::Specificity;
 use crate::css::values::Value;
-use crate::xml::XMLNode;
 use gc_arena::Collect;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
@@ -74,7 +73,10 @@ where
     /// a given element at one time, carrying conflicting property values. To
     /// resolve this, you must determine the specificity of the rule's selector
     /// and use it to determine priority order.
-    fn applies_to<'gc>(&self, node: XMLNode<'gc>) -> bool {
+    fn applies_to<'gc, S>(&self, node: S) -> bool
+    where
+        S: StyleNode<'gc>,
+    {
         let mut candidates = vec![node];
 
         for combi in self.selector.iter().rev() {
@@ -154,7 +156,10 @@ where
 {
     /// Compute the styles that would apply to a given node with this
     /// stylesheet.
-    pub fn compute_styles<'gc>(&self, node: XMLNode<'gc>) -> ComputedStyle<N, K> {
+    pub fn compute_styles<'gc, S>(&self, node: S) -> ComputedStyle<N, K>
+    where
+        S: StyleNode<'gc>,
+    {
         let mut computed_style = ComputedStyle::default();
         let mut sorted_rules = BTreeMap::new();
 
