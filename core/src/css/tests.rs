@@ -466,3 +466,61 @@ fn css_combinator_has_id() {
         assert!(!candidates.is_empty());
     });
 }
+
+#[test]
+fn css_rule_any() {
+    rootless_arena(|mc| {
+        let rule: Rule<TestCSSProperty, TestCSSKeyword> =
+            Rule::from_combinators(vec![Combinator::Any]);
+
+        let document = XMLDocument::new(mc);
+        let root_node = XMLNode::new_element(mc, "html", document).unwrap();
+
+        document.as_node().append_child(mc, root_node).unwrap();
+
+        assert!(rule.applies_to(root_node));
+    });
+}
+
+#[test]
+fn css_stylesheet_any() {
+    rootless_arena(|mc| {
+        let mut stylesheet = Stylesheet::new();
+
+        let mut rule = Rule::from_combinators(vec![Combinator::Any]);
+        rule.add_property(
+            Property::new(
+                TestCSSProperty::PropertyInherited,
+                TestCSSKeyword::KeywordB.into(),
+            ),
+            false,
+        );
+        rule.add_property(
+            Property::new(
+                TestCSSProperty::PropertyNonInherited,
+                TestCSSKeyword::KeywordA.into(),
+            ),
+            false,
+        );
+
+        stylesheet.append_rule(rule);
+
+        let document = XMLDocument::new(mc);
+        let root_node = XMLNode::new_element(mc, "html", document).unwrap();
+
+        document.as_node().append_child(mc, root_node).unwrap();
+
+        let cs = stylesheet.compute_styles(root_node);
+
+        assert_eq!(
+            cs.get_defined(&TestCSSProperty::PropertyInherited)
+                .into_owned(),
+            TestCSSKeyword::KeywordB.into()
+        );
+        assert_eq!(
+            cs.get_defined(&TestCSSProperty::PropertyNonInherited)
+                .into_owned(),
+            TestCSSKeyword::KeywordA.into()
+        );
+    });
+}

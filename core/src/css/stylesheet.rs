@@ -73,7 +73,7 @@ where
     /// a given element at one time, carrying conflicting property values. To
     /// resolve this, you must determine the specificity of the rule's selector
     /// and use it to determine priority order.
-    fn applies_to<'gc, S>(&self, node: S) -> bool
+    pub fn applies_to<'gc, S>(&self, node: S) -> bool
     where
         S: StyleNode<'gc>,
     {
@@ -87,7 +87,7 @@ where
             }
         }
 
-        candidates.is_empty()
+        !candidates.is_empty()
     }
 
     /// Determine the specificity of the given rule.
