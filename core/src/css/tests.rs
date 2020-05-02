@@ -1,8 +1,11 @@
 //! CSS Tests
 
+use crate::css::combinators::Combinator;
 use crate::css::property::{Property, PropertyName};
-use crate::css::stylesheet::ComputedStyle;
+use crate::css::stylesheet::{ComputedStyle, Rule, Stylesheet};
 use crate::css::values::Value;
+use crate::xml::{XMLDocument, XMLName, XMLNode};
+use gc_arena::rootless_arena;
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 enum TestCSSProperty {
@@ -394,4 +397,72 @@ fn css_cascade_swapped_initial_on_set() {
             .into_owned(),
         TestCSSKeyword::KeywordA.into()
     );
+}
+
+#[test]
+fn css_combinator_any() {
+    rootless_arena(|mc| {
+        let combinator = Combinator::Any;
+
+        let document = XMLDocument::new(mc);
+        let root_node = XMLNode::new_element(mc, "html", document).unwrap();
+
+        let mut candidates = vec![root_node];
+
+        combinator.eval(&mut candidates);
+
+        assert!(!candidates.is_empty());
+    });
+}
+
+#[test]
+fn css_combinator_is_element() {
+    rootless_arena(|mc| {
+        let combinator = Combinator::IsElement("html".to_string());
+
+        let document = XMLDocument::new(mc);
+        let root_node = XMLNode::new_element(mc, "html", document).unwrap();
+
+        let mut candidates = vec![root_node];
+
+        combinator.eval(&mut candidates);
+
+        assert!(!candidates.is_empty());
+    });
+}
+
+#[test]
+fn css_combinator_has_class() {
+    rootless_arena(|mc| {
+        let combinator = Combinator::HasClass("my-class".to_string());
+
+        let document = XMLDocument::new(mc);
+        let root_node = XMLNode::new_element(mc, "html", document).unwrap();
+
+        root_node.set_attribute_value(mc, &XMLName::from_str("class"), "my-other-class my-class");
+
+        let mut candidates = vec![root_node];
+
+        combinator.eval(&mut candidates);
+
+        assert!(!candidates.is_empty());
+    });
+}
+
+#[test]
+fn css_combinator_has_id() {
+    rootless_arena(|mc| {
+        let combinator = Combinator::HasId("my-id".to_string());
+
+        let document = XMLDocument::new(mc);
+        let root_node = XMLNode::new_element(mc, "html", document).unwrap();
+
+        root_node.set_attribute_value(mc, &XMLName::from_str("id"), "my-id");
+
+        let mut candidates = vec![root_node];
+
+        combinator.eval(&mut candidates);
+
+        assert!(!candidates.is_empty());
+    });
 }
