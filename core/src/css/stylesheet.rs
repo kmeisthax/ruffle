@@ -173,14 +173,17 @@ where
             let rule = self.rules.get(*index).unwrap();
             for property in rule
                 .iter_properties()
-                .filter_map(|(p, imp)| if *imp { Some(p) } else { None })
+                .filter_map(|(p, imp)| if !*imp { Some(p) } else { None })
             {
                 computed_style.add_property(property.clone());
             }
+        }
 
+        for (_specificity, index) in sorted_rules.iter() {
+            let rule = self.rules.get(*index).unwrap();
             for property in rule
                 .iter_properties()
-                .filter_map(|(p, imp)| if !*imp { Some(p) } else { None })
+                .filter_map(|(p, imp)| if *imp { Some(p) } else { None })
             {
                 computed_style.add_property(property.clone());
             }
