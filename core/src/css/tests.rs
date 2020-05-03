@@ -483,6 +483,54 @@ fn css_rule_any() {
 }
 
 #[test]
+fn css_rule_descendent() {
+    rootless_arena(|mc| {
+        let rule: Rule<TestCSSProperty, TestCSSKeyword> = Rule::from_combinators(vec![
+            Combinator::IsElement("html".to_string()),
+            Combinator::Descendent,
+            Combinator::IsElement("body".to_string()),
+        ]);
+
+        let document = XMLDocument::new(mc);
+        let mut root_node = XMLNode::new_element(mc, "html", document).unwrap();
+        let child_node = XMLNode::new_element(mc, "body", document).unwrap();
+
+        document.as_node().append_child(mc, root_node).unwrap();
+        root_node.append_child(mc, child_node).unwrap();
+
+        assert!(!rule.applies_to(root_node));
+        assert!(rule.applies_to(child_node));
+    });
+}
+
+#[test]
+fn css_rule_child() {
+    rootless_arena(|mc| {
+        let rule: Rule<TestCSSProperty, TestCSSKeyword> = Rule::from_combinators(vec![
+            Combinator::IsElement("body".to_string()),
+            Combinator::Child,
+            Combinator::IsElement("p".to_string()),
+        ]);
+
+        let document = XMLDocument::new(mc);
+        let mut root_node = XMLNode::new_element(mc, "body", document).unwrap();
+        let mut child_node1 = XMLNode::new_element(mc, "div", document).unwrap();
+        let child_node2 = XMLNode::new_element(mc, "p", document).unwrap();
+        let grandchild_node = XMLNode::new_element(mc, "p", document).unwrap();
+
+        document.as_node().append_child(mc, root_node).unwrap();
+        root_node.append_child(mc, child_node1).unwrap();
+        root_node.append_child(mc, child_node2).unwrap();
+        child_node1.append_child(mc, grandchild_node).unwrap();
+
+        assert!(!rule.applies_to(root_node));
+        assert!(!rule.applies_to(child_node1));
+        assert!(rule.applies_to(child_node2));
+        assert!(!rule.applies_to(grandchild_node));
+    });
+}
+
+#[test]
 fn css_stylesheet_any() {
     rootless_arena(|mc| {
         let mut stylesheet = Stylesheet::new();
