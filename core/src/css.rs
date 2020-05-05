@@ -26,4 +26,4 @@ mod tests;
 pub use combinators::{Combinator, StyleNode};
 pub use property::{Property, PropertyName};
 pub use stylesheet::{ComputedStyle, Rule, Stylesheet};
-pub use values::Value;
+pub use values::{Unit, Value};
