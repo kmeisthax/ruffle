@@ -7,7 +7,6 @@ use crate::css::values::Value;
 use gc_arena::Collect;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
-use std::hash::Hash;
 
 /// A CSS Rule consists of a series of properties applied to elements matching
 /// a particular selector.
