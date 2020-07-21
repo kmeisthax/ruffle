@@ -11,6 +11,7 @@ use crate::prelude::*;
 use crate::shape_utils::DrawCommand;
 use crate::tag_utils::SwfMovie;
 use crate::transform::Transform;
+use crate::vminterface::Instantiator;
 use crate::xml::XMLDocument;
 use gc_arena::{Collect, Gc, GcCell, MutationContext};
 use std::{cell::Ref, sync::Arc};
@@ -847,7 +848,7 @@ impl<'gc> TDisplayObject<'gc> for EditText<'gc> {
         context: &mut UpdateContext<'_, 'gc, '_>,
         display_object: DisplayObject<'gc>,
         _init_object: Option<Object<'gc>>,
-        _instantiated_from_avm: bool,
+        _instantiated_by: Instantiator,
     ) {
         self.set_default_instance_name(context);
 

@@ -855,6 +855,7 @@ mod tests {
     use crate::loader::LoadManager;
     use crate::prelude::*;
     use crate::tag_utils::{SwfMovie, SwfSlice};
+    use crate::vminterface::Instantiator;
     use gc_arena::rootless_arena;
     use rand::{rngs::SmallRng, SeedableRng};
     use std::collections::{BTreeMap, HashMap};
@@ -913,7 +914,7 @@ mod tests {
                 avm2: &mut avm2,
             };
 
-            root.post_instantiation(&mut context, root, None, false);
+            root.post_instantiation(&mut context, root, None, Instantiator::Movie);
             root.set_name(context.gc_context, "");
 
             let base_clip = *context.levels.get(&0).unwrap();

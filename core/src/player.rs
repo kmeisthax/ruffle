@@ -16,6 +16,7 @@ use crate::loader::LoadManager;
 use crate::prelude::*;
 use crate::tag_utils::SwfMovie;
 use crate::transform::TransformStack;
+use crate::vminterface::Instantiator;
 use enumset::EnumSet;
 use gc_arena::{make_arena, ArenaParameters, Collect, GcCell};
 use log::info;
@@ -310,7 +311,7 @@ impl Player {
             let root: DisplayObject =
                 MovieClip::from_movie(context.gc_context, context.swf.clone()).into();
             root.set_depth(context.gc_context, 0);
-            root.post_instantiation(context, root, None, false);
+            root.post_instantiation(context, root, None, Instantiator::Movie);
             root.set_name(context.gc_context, "");
             context.levels.insert(0, root);
 
