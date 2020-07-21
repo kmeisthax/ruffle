@@ -19,11 +19,13 @@ mod function_object;
 mod namespace_object;
 mod primitive_object;
 mod script_object;
+mod stage_object;
 
 pub use crate::avm2::object::function_object::FunctionObject;
 pub use crate::avm2::object::namespace_object::NamespaceObject;
 pub use crate::avm2::object::primitive_object::PrimitiveObject;
 pub use crate::avm2::object::script_object::ScriptObject;
+pub use crate::avm2::object::stage_object::StageObject;
 
 /// Represents an object that can be directly interacted with by the AVM2
 /// runtime.
@@ -35,6 +37,7 @@ pub use crate::avm2::object::script_object::ScriptObject;
         FunctionObject(FunctionObject<'gc>),
         PrimitiveObject(PrimitiveObject<'gc>),
         NamespaceObject(NamespaceObject<'gc>),
+        StageObject(StageObject<'gc>),
     }
 )]
 pub trait TObject<'gc>: 'gc + Collect + Debug + Into<Object<'gc>> + Clone + Copy {
