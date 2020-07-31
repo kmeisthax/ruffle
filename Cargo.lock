@@ -2977,6 +2977,12 @@ dependencies = [
  "base64 0.12.3",
  "bitflags",
  "serde",
+
+[[package]]
+name = "ruffle_codec_h263"
+version = "0.1.0"
+dependencies = [
+ "enumset 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
