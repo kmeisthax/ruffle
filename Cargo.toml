@@ -13,6 +13,8 @@ members = [
     "render/common_tess",
     "render/webgl",
 
+    "codecs/h263",
+
     "tests",
 ]
 resolver = "2"

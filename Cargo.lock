@@ -3121,6 +3121,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ruffle_codec_h263"
+version = "0.1.0"
+dependencies = [
+ "bitflags",
+]
+
+[[package]]
 name = "ruffle_core"
 version = "0.1.0"
 dependencies = [
