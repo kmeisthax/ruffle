@@ -1,10 +1,12 @@
 //! Picture-layer decoder
 
 use crate::decoder::reader::H263Reader;
+use crate::decoder::types::DecoderOptions;
 use crate::error::{Error, Result};
 use crate::types::{
-    CustomPictureClock, CustomPictureFormat, Picture, PictureOption, PictureTypeCode,
-    PixelAspectRatio, SourceFormat,
+    CustomPictureClock, CustomPictureFormat, MotionVectorRange, Picture, PictureOption,
+    PictureTypeCode, PixelAspectRatio, ReferencePictureSelectionMode, ScalabilityLayer,
+    SliceSubmode, SourceFormat,
 };
 use enumset::{EnumSet, EnumSetType};
 use std::io::Read;
@@ -92,9 +94,8 @@ pub enum PlusPTypeFollower {
     HasCustomClock,
     HasMotionVectorRange,
     HasSliceStructuredSubmode,
-    MayHaveReferenceLayerNumber,
-    HasReferencePictureSelection,
-    MayHaveTemporalReference,
+    HasReferenceLayerNumber,
+    HasReferencePictureSelectionMode,
 }
 
 /// The information imparted by a `PLUSPTYPE` record.
@@ -111,7 +112,10 @@ pub type PlusPType = (
 );
 
 /// Attempts to read a `PLUSPTYPE` record from the bitstream.
-fn decode_plusptype<R>(reader: &mut H263Reader<R>) -> Result<PlusPType>
+fn decode_plusptype<R>(
+    reader: &mut H263Reader<R>,
+    decoder_options: EnumSet<DecoderOptions>,
+) -> Result<PlusPType>
 where
     R: Read,
 {
@@ -156,6 +160,7 @@ where
 
             if opptype & 0x02000 != 0 {
                 options |= PictureOption::UnrestrictedMotionVectors;
+                followers |= PlusPTypeFollower::HasMotionVectorRange;
             }
 
             if opptype & 0x01000 != 0 {
@@ -176,10 +181,12 @@ where
 
             if opptype & 0x00100 != 0 {
                 options |= PictureOption::SliceStructured;
+                followers |= PlusPTypeFollower::HasSliceStructuredSubmode;
             }
 
             if opptype & 0x00080 != 0 {
                 options |= PictureOption::ReferencePictureSelection;
+                followers |= PlusPTypeFollower::HasReferencePictureSelectionMode;
             }
 
             if opptype & 0x00040 != 0 {
@@ -192,6 +199,10 @@ where
 
             if opptype & 0x00010 != 0 {
                 options |= PictureOption::ModifiedQuantization;
+            }
+
+            if decoder_options.contains(DecoderOptions::UseScalabilityMode) {
+                followers |= PlusPTypeFollower::HasReferenceLayerNumber;
             }
         }
 
@@ -308,12 +319,104 @@ where
     })
 }
 
+/// Attempts to read `UUI` from the bitstream.
+fn decode_uui<R>(reader: &mut H263Reader<R>) -> Result<MotionVectorRange>
+where
+    R: Read,
+{
+    reader.with_transaction(|reader| {
+        let is_limited: u8 = reader.read_bits(1)?;
+        if is_limited == 1 {
+            return Ok(MotionVectorRange::Standard);
+        }
+
+        let is_unlimited: u8 = reader.read_bits(1)?;
+        if is_unlimited == 1 {
+            return Ok(MotionVectorRange::Unlimited);
+        }
+
+        Err(Error::InvalidBitstream)
+    })
+}
+
+/// Attempts to read `SSS` from the bitstream.
+fn decode_sss<R>(reader: &mut H263Reader<R>) -> Result<EnumSet<SliceSubmode>>
+where
+    R: Read,
+{
+    reader.with_transaction(|reader| {
+        let mut sss = EnumSet::empty();
+        let sss_bits: u8 = reader.read_bits(2)?;
+
+        if sss_bits & 0x01 != 0 {
+            sss |= SliceSubmode::RectangularSlices;
+        }
+
+        if sss_bits & 0x02 != 0 {
+            sss |= SliceSubmode::ArbitraryOrder;
+        }
+
+        Ok(sss)
+    })
+}
+
+/// Attempts to read `ELNUM` and `RLNUM` from the bitstream.
+fn decode_elnum_rlnum<R>(
+    reader: &mut H263Reader<R>,
+    followers: EnumSet<PlusPTypeFollower>,
+) -> Result<ScalabilityLayer>
+where
+    R: Read,
+{
+    reader.with_transaction(|reader| {
+        let enhancement = reader.read_bits(4)?;
+        let reference = if followers.contains(PlusPTypeFollower::HasReferenceLayerNumber) {
+            Some(reader.read_bits(4)?)
+        } else {
+            None
+        };
+
+        Ok(ScalabilityLayer {
+            enhancement,
+            reference,
+        })
+    })
+}
+
+/// Attempts to read `RPSMF` from the bitstream.
+fn decode_rpsmf<R>(reader: &mut H263Reader<R>) -> Result<EnumSet<ReferencePictureSelectionMode>>
+where
+    R: Read,
+{
+    reader.with_transaction(|reader| {
+        let mut rpsmf = EnumSet::empty();
+        let rpsmf_bits: u8 = reader.read_bits(3)?;
+
+        if rpsmf_bits & 0x4 == 0 {
+            rpsmf |= ReferencePictureSelectionMode::Reserved;
+        }
+
+        if rpsmf_bits & 0x2 != 0 {
+            rpsmf |= ReferencePictureSelectionMode::RequestNegativeAcknowledgement;
+        }
+
+        if rpsmf_bits & 0x1 != 0 {
+            rpsmf |= ReferencePictureSelectionMode::RequestAcknowledgement;
+        }
+
+        Ok(rpsmf)
+    })
+}
+
 /// Attempts to read a picture record from an H.263 bitstream.
 ///
 /// If no valid picture record could be found at the current position in the
 /// reader's bitstream, this function returns `None` and leaves the reader at
 /// the same position.
-fn decode_picture<R>(reader: &mut H263Reader<R>) -> Result<Option<Picture>>
+fn decode_picture<R>(
+    reader: &mut H263Reader<R>,
+    decoder_options: EnumSet<DecoderOptions>,
+) -> Result<Option<Picture>>
 where
     R: Read,
 {
@@ -332,7 +435,7 @@ where
             Some((format, picture_type)) => (Some(format), picture_type, EnumSet::empty()),
             None => {
                 let (extra_options, maybe_format, picture_type, followers) =
-                    decode_plusptype(reader)?;
+                    decode_plusptype(reader, decoder_options)?;
 
                 options |= extra_options;
 
@@ -365,9 +468,34 @@ where
             low_tr as u16
         };
 
+        let motion_vector_range = if followers.contains(PlusPTypeFollower::HasMotionVectorRange) {
+            Some(decode_uui(reader)?)
+        } else {
+            None
+        };
+
+        let sss = if followers.contains(PlusPTypeFollower::HasSliceStructuredSubmode) {
+            Some(decode_sss(reader)?)
+        } else {
+            None
+        };
+
+        let scalability_layer = if decoder_options.contains(DecoderOptions::UseScalabilityMode) {
+            Some(decode_elnum_rlnum(reader, followers)?)
+        } else {
+            None
+        };
+
+        let reference_picture_selection_mode =
+            if followers.contains(PlusPTypeFollower::HasReferencePictureSelectionMode) {
+                Some(decode_rpsmf(reader)?)
+            } else {
+                None
+            };
+
         //TODO: Implement all of the other follower records implied by the
         //options or followers returned from parsing `PlusPType`.
-        //Start from H.263 5.1.9
+        //Start from H.263 5.1.14
 
         Ok(None)
     })
