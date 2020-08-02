@@ -154,11 +154,12 @@ pub enum PictureOption {
     DeblockingFilter,
     SliceStructured,
     ReferencePictureSelection,
+    IndependentSegmentDecoding,
     AlternativeInterVLC,
     ModifiedQuantization,
     ReferencePictureResampling,
     ReducedResolutionUpdate,
-    HasRoundingType,
+    RoundingTypeOne,
 }
 
 /// All available picture types in H.263.
@@ -203,13 +204,13 @@ pub enum PictureTypeCode {
 /// This defines a "custom" picture format, outside of the standard CIF options.
 pub struct CustomPictureFormat {
     /// The aspect ratio of a single pixel.
-    pixel_aspect_ratio: PixelAspectRatio,
+    pub pixel_aspect_ratio: PixelAspectRatio,
 
     /// The number of pixels per line, shifted right by 4.
-    picture_width_indication: u8,
+    pub picture_width_indication: u8,
 
     /// The number of lines per image, shifted right by 4.
-    picture_height_indication: u8,
+    pub picture_height_indication: u8,
 }
 
 /// The aspect ratio of dots on each line.
@@ -267,11 +268,11 @@ pub struct CustomPictureClock {
     /// Whether or not the divisor is multiplied by 1000 or 1001.
     ///
     /// `true` indicates 1001, whilst `false` indicates 1000.
-    times_1001: bool,
+    pub times_1001: bool,
 
     /// The divisor, itself stored divided by a constant factor (see
     /// `times_1001`.)
-    divisor: u8,
+    pub divisor: u8,
 }
 
 /// ITU-T Recommendation H.263 (01/2005) 5.1.9 `UUI`
