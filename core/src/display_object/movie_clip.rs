@@ -1246,7 +1246,7 @@ impl<'gc> MovieClip<'gc> {
                         &Avm2QName::new(Avm2Namespace::public_namespace(), "prototype"),
                         &mut activation,
                     )?
-                    .as_object()?;
+                    .coerce_to_object(&mut activation)?;
                 let object = Avm2StageObject::for_display_object(
                     activation.context.gc_context,
                     display_object,

@@ -39,8 +39,7 @@ mod value;
 
 pub use crate::avm2::activation::Activation;
 pub use crate::avm2::names::{Namespace, QName};
-pub use crate::avm2::object::{Object, TObject};
-pub use crate::avm2::stage_object::StageObject;
+pub use crate::avm2::object::{Object, StageObject, TObject};
 pub use crate::avm2::value::Value;
 
 /// Boxed error alias.
