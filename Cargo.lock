@@ -3125,6 +3125,7 @@ name = "ruffle_codec_h263"
 version = "0.1.0"
 dependencies = [
  "bitflags",
+ "lazy_static",
  "num-traits",
  "thiserror",
 ]
