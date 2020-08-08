@@ -4,9 +4,9 @@ use crate::decoder::reader::H263Reader;
 use crate::decoder::types::DecoderOptions;
 use crate::error::{Error, Result};
 use crate::types::{
-    CustomPictureClock, CustomPictureFormat, MotionVectorRange, Picture, PictureOption,
-    PictureTypeCode, PixelAspectRatio, ReferencePictureSelectionMode, ScalabilityLayer,
-    SliceSubmode, SourceFormat,
+    BackchannelMessage, CustomPictureClock, CustomPictureFormat, MotionVectorRange, Picture,
+    PictureOption, PictureTypeCode, PixelAspectRatio, ReferencePictureSelectionMode,
+    ScalabilityLayer, SliceSubmode, SourceFormat,
 };
 use enumset::{enum_set, EnumSet, EnumSetType};
 use std::io::Read;
@@ -449,6 +449,29 @@ where
     })
 }
 
+/// Attempts to read `BCI` and `BCM` from the bitstream.
+fn decode_bcm<R>(reader: &mut H263Reader<R>) -> Result<Option<BackchannelMessage>>
+where
+    R: Read,
+{
+    reader.with_transaction(|reader| {
+        let bci: u8 = reader.read_bits(1)?;
+
+        if bci == 1 {
+            Err(Error::UnimplementedDecoding)
+        } else {
+            let not_bci: u8 = reader.read_bits(1)?;
+
+            if not_bci == 1 {
+                Ok(None)
+            } else {
+                // BCI must be `1` or `01`
+                Err(Error::InvalidBitstream)
+            }
+        }
+    })
+}
+
 /// Attempts to read a picture record from an H.263 bitstream.
 ///
 /// If no valid picture record could be found at the current position in the
@@ -545,6 +568,12 @@ where
 
         let prediction_reference = if options.contains(PictureOption::ReferencePictureSelection) {
             decode_trpi(reader)?
+        } else {
+            None
+        };
+
+        let backchannel_message = if options.contains(PictureOption::ReferencePictureSelection) {
+            decode_bcm(reader)?
         } else {
             None
         };
