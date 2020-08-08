@@ -9,6 +9,7 @@ use crate::avm2::string::AvmString;
 use crate::avm2::traits::{Trait, TraitKind};
 use crate::avm2::value::{Hint, Value};
 use crate::avm2::Error;
+use crate::display_object::DisplayObject;
 use gc_arena::{Collect, GcCell, MutationContext};
 use ruffle_macros::enum_trait_object;
 use std::cell::Ref;
@@ -736,6 +737,11 @@ pub trait TObject<'gc>: 'gc + Collect + Debug + Into<Object<'gc>> + Clone + Copy
 
     /// Unwrap this object's `Namespace`, if the object is a boxed namespace.
     fn as_namespace(&self) -> Option<Ref<Namespace<'gc>>> {
+        None
+    }
+
+    /// Get this object's `DisplayObject`, if it has one.
+    fn as_display_object(&self) -> Option<DisplayObject<'gc>> {
         None
     }
 }
