@@ -19,8 +19,13 @@ pub struct Picture {
     /// rate.
     format: SourceFormat,
 
-    /// Any options used by the encoder.
-    options: EnumSet<PictureOption>,
+    /// Options which have been explicitly enabled by this particular
+    /// `Picture`.
+    options_enabled: EnumSet<PictureOption>,
+
+    /// Options which have been explicitly disabled by this particular
+    /// `Picture`.
+    options_disabled: EnumSet<PictureOption>,
 
     /// The intra-prediction mode in use, if any.
     update_type: PictureTypeCode,
