@@ -38,15 +38,16 @@ mod traits;
 mod value;
 
 pub use crate::avm2::activation::Activation;
-pub use crate::avm2::names::QName;
+pub use crate::avm2::names::{Namespace, QName};
 pub use crate::avm2::object::{Object, TObject};
+pub use crate::avm2::stage_object::StageObject;
 pub use crate::avm2::value::Value;
 
 /// Boxed error alias.
 ///
 /// As AVM2 is a far stricter VM than AVM1, this may eventually be replaced
 /// with a proper Avm2Error enum.
-type Error = Box<dyn std::error::Error>;
+pub type Error = Box<dyn std::error::Error>;
 
 /// The state of an AVM2 interpreter.
 #[derive(Collect)]
