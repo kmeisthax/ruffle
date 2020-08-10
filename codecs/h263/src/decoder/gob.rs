@@ -25,7 +25,7 @@ fn decode_gob<R>(
 where
     R: Read,
 {
-    reader.with_transaction_option(|reader| {
+    reader.with_transaction_union(|reader| {
         reader.skip_to_alignment()?;
 
         let psc: u32 = reader.read_bits(17)?;
