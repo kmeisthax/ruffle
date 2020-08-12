@@ -171,6 +171,11 @@ pub enum PictureOption {
     ReferencePictureResampling,
     ReducedResolutionUpdate,
     RoundingTypeOne,
+
+    /// Advisory flag to request use of a deblocking filter.
+    ///
+    /// This flag is only set by Sorenson Spark bitstreams.
+    UseDeblocker,
 }
 
 /// All available picture types in H.263.
@@ -208,6 +213,15 @@ pub enum PictureTypeCode {
     /// The provided `u8` is the `MPPTYPE` that was reserved, anchored to the
     /// lowest significant bit of the `u8`.
     Reserved(u8),
+
+    /// A partial picture update that references a previously decoded frame.
+    ///
+    /// This particular picture type has an additional stipulation: the encoder
+    /// promises not to code frames that reference this one. The decoder is
+    /// thus free to dispose of it after the fact.
+    ///
+    /// This picture type is exclusive to Sorenson Spark bitstreams.
+    DisposablePFrame,
 }
 
 /// ITU-T Recommendation H.263 (01/2005) 5.1.5-5.1.6 `CPFMT`, `EPAR`
@@ -218,11 +232,11 @@ pub struct CustomPictureFormat {
     /// The aspect ratio of a single pixel.
     pub pixel_aspect_ratio: PixelAspectRatio,
 
-    /// The number of pixels per line, shifted right by 4.
-    pub picture_width_indication: u8,
+    /// The number of pixels per line.
+    pub picture_width_indication: u16,
 
-    /// The number of lines per image, shifted right by 4.
-    pub picture_height_indication: u8,
+    /// The number of lines per image.
+    pub picture_height_indication: u16,
 }
 
 /// The aspect ratio of dots on each line.
