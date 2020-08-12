@@ -9,6 +9,12 @@ use enumset::{EnumSet, EnumSetType};
 /// such as it's resolution, the use of any optional H.263 features, and the
 /// intra-prediction mode used.
 pub struct Picture {
+    /// The version code.
+    ///
+    /// Only Sorenson Spark bitstreams contain a version code; compliant H.263
+    /// bitstreams are unversioned.
+    pub version: Option<u8>,
+
     /// The temporal reference index of this picture.
     ///
     /// This value may either be 8 or 10 bits wide. This means that references
