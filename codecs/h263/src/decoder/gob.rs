@@ -3,6 +3,7 @@
 use crate::decoder::reader::H263Reader;
 use crate::decoder::types::DecoderOptions;
 use crate::error::{Error, Result};
+use crate::types::GroupOfBlocks;
 use enumset::EnumSet;
 use std::io::Read;
 
@@ -21,7 +22,7 @@ use std::io::Read;
 fn decode_gob<R>(
     reader: &mut H263Reader<R>,
     _decoder_options: EnumSet<DecoderOptions>,
-) -> Result<Option<()>>
+) -> Result<Option<GroupOfBlocks>>
 where
     R: Read,
 {
