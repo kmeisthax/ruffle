@@ -54,7 +54,6 @@ pub struct MovieClipData<'gc> {
     object: Option<AvmObject<'gc>>,
     clip_actions: Vec<ClipAction>,
     frame_scripts: Vec<Avm2FrameScript<'gc>>,
-    last_frame_script_run: Option<FrameNumber>,
     has_button_clip_event: bool,
     flags: EnumSet<MovieClipFlags>,
     avm_constructor: Option<AvmObject<'gc>>,
@@ -90,7 +89,6 @@ impl<'gc> MovieClip<'gc> {
                 object: None,
                 clip_actions: Vec::new(),
                 frame_scripts: Vec::new(),
-                last_frame_script_run: None,
                 has_button_clip_event: false,
                 flags: EnumSet::empty(),
                 avm_constructor: None,
@@ -127,7 +125,6 @@ impl<'gc> MovieClip<'gc> {
                 object: None,
                 clip_actions: Vec::new(),
                 frame_scripts: Vec::new(),
-                last_frame_script_run: None,
                 has_button_clip_event: false,
                 flags: MovieClipFlags::Playing.into(),
                 avm_constructor: None,
@@ -975,6 +972,17 @@ impl<'gc> MovieClip<'gc> {
         if !has_stream_block {
             self.0.write(context.gc_context).stop_audio_stream(context);
         }
+
+        if self
+            .0
+            .read()
+            .object
+            .map(|o| o.is_avm2_object())
+            .unwrap_or(false)
+        {
+            let frame_id = self.0.read().current_frame;
+            self.run_frame_scripts(frame_id, context);
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1397,7 +1405,7 @@ impl<'gc> MovieClip<'gc> {
 
     fn run_frame_scripts(self, frame_id: FrameNumber, context: &mut UpdateContext<'_, 'gc, '_>) {
         let mut index = 0;
-        let mut read = self.0.read();
+        let read = self.0.read();
 
         let avm2_object = read.object.and_then(|o| o.as_avm2_object().ok());
 
@@ -1406,14 +1414,15 @@ impl<'gc> MovieClip<'gc> {
                 if fs.frame_id == frame_id {
                     let callable = fs.callable;
 
-                    drop(read);
-
-                    let mut activation = Avm2Activation::from_nothing(context.reborrow());
-                    if let Err(e) = callable.call(Some(avm2_object), &[], &mut activation, None) {
-                        log::error!("Error in script on frame {}: {}", frame_id, e);
-                    }
-
-                    read = self.0.read();
+                    context.action_queue.queue_actions(
+                        self.into(),
+                        ActionType::Callable2 {
+                            callable,
+                            reciever: Some(avm2_object),
+                            args: Vec::new(),
+                        },
+                        false,
+                    );
                 }
 
                 index += 1;
@@ -1463,27 +1472,6 @@ impl<'gc> TDisplayObject<'gc> for MovieClip<'gc> {
                 context,
                 ClipEvent::Load,
             );
-        }
-
-        if self
-            .0
-            .read()
-            .object
-            .map(|o| o.is_avm2_object())
-            .unwrap_or(false)
-        {
-            let frame_id = self.0.read().current_frame;
-
-            if self
-                .0
-                .read()
-                .last_frame_script_run
-                .map(|lfsr| lfsr != frame_id)
-                .unwrap_or(true)
-            {
-                self.run_frame_scripts(frame_id, context);
-                self.0.write(context.gc_context).last_frame_script_run = Some(frame_id);
-            }
         }
     }
 
