@@ -407,4 +407,9 @@ impl<'gc> Class<'gc> {
     pub fn implements(&mut self, iface: Multiname<'gc>) {
         self.interfaces.push(iface)
     }
+
+    /// Determine if this class is sealed (no dynamic properties)
+    pub fn is_sealed(&self) -> bool {
+        self.attributes.0.contains(ClassAttributes::Sealed)
+    }
 }

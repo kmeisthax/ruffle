@@ -878,6 +878,19 @@ impl<'a, 'gc, 'gc_context> Activation<'a, 'gc, 'gc_context> {
             format!("Could not resolve property {:?}", multiname.local_name()).into()
         });
 
+        // Special case for dynamic properties as scripts may attempt to get
+        // dynamic properties not yet set
+        if name.is_err()
+            && multiname.includes_dynamic_namespace()
+            && !object
+                .as_class()
+                .map(|c| c.read().is_sealed())
+                .unwrap_or(false)
+        {
+            self.context.avm2.push(Value::Undefined);
+            return Ok(FrameControl::Continue);
+        }
+
         let value = object.get_property(object, &name?, self)?;
         self.context.avm2.push(value);
 
