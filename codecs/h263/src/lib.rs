@@ -2,6 +2,9 @@
 
 mod decoder;
 mod error;
+pub mod parser;
 mod traits;
 mod types;
-mod vlc;
+
+pub use decoder::DecoderOption;
+pub use error::{Error, Result};

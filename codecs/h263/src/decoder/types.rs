@@ -1,10 +1,10 @@
 //! Decoder types
 
-use enumset::{EnumSet, EnumSetType};
+use enumset::EnumSetType;
 
 /// Options which influence the decoding of a bitstream.
 #[derive(EnumSetType)]
-pub enum DecoderOptions {
+pub enum DecoderOption {
     /// Attempt to decode the video as a Sorenson Spark bitstream.
     ///
     /// Sorenson Spark is a modified H.263 video format notably used in early

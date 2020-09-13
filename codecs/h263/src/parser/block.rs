@@ -1,10 +1,10 @@
 //! Block decoding
 
-use crate::decoder::reader::H263Reader;
-use crate::decoder::types::DecoderOptions;
+use crate::decoder::DecoderOption;
 use crate::error::{Error, Result};
+use crate::parser::reader::H263Reader;
+use crate::parser::vlc::{Entry, Entry::*};
 use crate::types::{Block, IntraDC, MacroblockType, Picture, PictureOption, TCoefficient};
-use crate::vlc::{Entry, Entry::*};
 use enumset::EnumSet;
 use std::io::Read;
 
@@ -666,9 +666,9 @@ const TCOEF_TABLE: [Entry<Option<ShortTCoefficient>>; 207] = [
 /// `tcoef_present` should be flagged if the particular block being decoded is
 /// flagged in the corresponding macroblock's `CodedBlockPattern` as having
 /// transform coefficients.
-fn decode_block<R>(
+pub fn decode_block<R>(
     reader: &mut H263Reader<R>,
-    decoder_options: EnumSet<DecoderOptions>,
+    decoder_options: EnumSet<DecoderOption>,
     picture: &Picture,
     running_options: EnumSet<PictureOption>,
     macroblock_type: MacroblockType,
@@ -691,7 +691,7 @@ where
             match short_tcoef.ok_or(Error::InvalidBitstream)? {
                 EscapeToLong => {
                     let level_width = if decoder_options
-                        .contains(DecoderOptions::SorensonSparkBitstream)
+                        .contains(DecoderOption::SorensonSparkBitstream)
                         && picture.version == Some(1)
                     {
                         if reader.read_bits::<u8>(1)? == 1 {
@@ -755,9 +755,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::decoder::block::{decode_block, ShortTCoefficient, TCOEF_TABLE};
-    use crate::decoder::reader::H263Reader;
-    use crate::decoder::types::DecoderOptions;
+    use crate::decoder::DecoderOption;
+    use crate::parser::block::{decode_block, ShortTCoefficient, TCOEF_TABLE};
+    use crate::parser::reader::H263Reader;
     use crate::types::{Block, IntraDC, MacroblockType, Picture, PictureTypeCode, TCoefficient};
     use enumset::EnumSet;
 
@@ -2055,7 +2055,7 @@ mod tests {
             },
             decode_block(
                 &mut reader,
-                DecoderOptions::SorensonSparkBitstream.into(),
+                DecoderOption::SorensonSparkBitstream.into(),
                 &picture,
                 EnumSet::empty(),
                 MacroblockType::Intra,
@@ -2110,7 +2110,7 @@ mod tests {
             },
             decode_block(
                 &mut reader,
-                DecoderOptions::SorensonSparkBitstream.into(),
+                DecoderOption::SorensonSparkBitstream.into(),
                 &picture,
                 EnumSet::empty(),
                 MacroblockType::Intra,

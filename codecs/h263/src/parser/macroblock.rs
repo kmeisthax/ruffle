@@ -1,12 +1,12 @@
 //! Macroblock decoding
 
-use crate::decoder::reader::H263Reader;
 use crate::error::{Error, Result};
+use crate::parser::reader::H263Reader;
+use crate::parser::vlc::{Entry, Entry::End, Entry::Fork};
 use crate::types::{
-    CodedBlockPattern, HalfPel, Macroblock, MacroblockType, MotionVector, MotionVectorRange,
-    Picture, PictureOption, PictureTypeCode,
+    CodedBlockPattern, HalfPel, Macroblock, MacroblockType, MotionVector, Picture, PictureOption,
+    PictureTypeCode,
 };
-use crate::vlc::{Entry, Entry::End, Entry::Fork};
 use enumset::EnumSet;
 use std::io::Read;
 
@@ -449,7 +449,7 @@ where
 /// present on the currently-decoded picture. This is not entirely equivalent
 /// to the current picture's option set as some options can carry forward from
 /// picture to picture without being explicitly mentioned.
-fn decode_macroblock_header<R>(
+pub fn decode_macroblock<R>(
     reader: &mut H263Reader<R>,
     picture: &Picture,
     running_options: EnumSet<PictureOption>,
@@ -559,10 +559,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::decoder::macroblock::{
+    use crate::parser::macroblock::{
         BlockPatternEntry, CBPY_TABLE_INTRA, MCBPC_I_TABLE, MCBPC_P_TABLE, MODB_TABLE, MVD_TABLE,
     };
-    use crate::decoder::reader::H263Reader;
+    use crate::parser::reader::H263Reader;
     use crate::types::MacroblockType;
 
     #[test]
