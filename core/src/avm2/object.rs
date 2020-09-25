@@ -3,6 +3,7 @@
 use crate::avm2::activation::Activation;
 use crate::avm2::array::ArrayStorage;
 use crate::avm2::class::Class;
+use crate::avm2::domain::Domain;
 use crate::avm2::function::Executable;
 use crate::avm2::names::{Multiname, Namespace, QName};
 use crate::avm2::scope::Scope;
@@ -17,12 +18,14 @@ use std::fmt::Debug;
 
 mod array_object;
 mod custom_object;
+mod domain_object;
 mod function_object;
 mod namespace_object;
 mod primitive_object;
 mod script_object;
 
 pub use crate::avm2::object::array_object::ArrayObject;
+pub use crate::avm2::object::domain_object::DomainObject;
 pub use crate::avm2::object::function_object::{implicit_deriver, FunctionObject};
 pub use crate::avm2::object::namespace_object::NamespaceObject;
 pub use crate::avm2::object::primitive_object::PrimitiveObject;
@@ -39,6 +42,7 @@ pub use crate::avm2::object::script_object::ScriptObject;
         PrimitiveObject(PrimitiveObject<'gc>),
         NamespaceObject(NamespaceObject<'gc>),
         ArrayObject(ArrayObject<'gc>),
+        DomainObject(DomainObject<'gc>),
     }
 )]
 pub trait TObject<'gc>: 'gc + Collect + Debug + Into<Object<'gc>> + Clone + Copy {
@@ -678,7 +682,14 @@ pub trait TObject<'gc>: 'gc + Collect + Debug + Into<Object<'gc>> + Clone + Copy
     /// coercions happen by defining `toString` in a downstream class or
     /// prototype; this is then picked up by the VM runtime when doing
     /// coercions.
-    fn to_string(&self, mc: MutationContext<'gc, '_>) -> Result<Value<'gc>, Error>;
+    fn to_string(&self, mc: MutationContext<'gc, '_>) -> Result<Value<'gc>, Error> {
+        let class_name = self
+            .as_proto_class()
+            .map(|c| c.read().name().local_name())
+            .unwrap_or_else(|| "Object".into());
+
+        Ok(AvmString::new(mc, format!("[object {}]", class_name)).into())
+    }
 
     /// Implement the result of calling `Object.prototype.toLocaleString` on this
     /// object class.
@@ -791,6 +802,11 @@ pub trait TObject<'gc>: 'gc + Collect + Debug + Into<Object<'gc>> + Clone + Copy
         &self,
         _mc: MutationContext<'gc, '_>,
     ) -> Option<RefMut<ArrayStorage<'gc>>> {
+        None
+    }
+
+    /// Unwrap this object as an ApplicationDomain.
+    fn as_application_domain(&self) -> Option<GcCell<'gc, Domain<'gc>>> {
         None
     }
 }
