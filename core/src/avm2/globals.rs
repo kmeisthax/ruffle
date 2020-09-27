@@ -58,6 +58,7 @@ pub struct SystemPrototypes<'gc> {
     pub uint: Object<'gc>,
     pub namespace: Object<'gc>,
     pub array: Object<'gc>,
+    pub application_domain: Object<'gc>,
 }
 
 impl<'gc> SystemPrototypes<'gc> {
@@ -86,6 +87,7 @@ impl<'gc> SystemPrototypes<'gc> {
             uint: empty,
             namespace: empty,
             array: empty,
+            application_domain: empty,
         }
     }
 }
@@ -228,6 +230,28 @@ fn array_deriver<'gc>(
     ArrayObject::derive(base_proto, activation.context.gc_context, class, scope)
 }
 
+fn appdomain_deriver<'gc>(
+    base_proto: Object<'gc>,
+    activation: &mut Activation<'_, 'gc, '_>,
+    class: GcCell<'gc, Class<'gc>>,
+    scope: Option<GcCell<'gc, Scope<'gc>>>,
+) -> Result<Object<'gc>, Error> {
+    let domain = scope
+        .unwrap()
+        .read()
+        .globals()
+        .as_application_domain()
+        .unwrap();
+
+    DomainObject::derive(
+        activation.context.gc_context,
+        base_proto,
+        domain,
+        class,
+        scope,
+    )
+}
+
 /// Add a builtin constant to the global scope.
 fn constant<'gc>(
     mc: MutationContext<'gc, '_>,
@@ -355,6 +379,21 @@ pub fn load_player_globals<'gc>(
     constant(mc, "", "null", Value::Null, domain, script)?;
     constant(mc, "", "NaN", NAN.into(), domain, script)?;
     constant(mc, "", "Infinity", f64::INFINITY.into(), domain, script)?;
+
+    // package `flash.system`
+    activation
+        .context
+        .avm2
+        .system_prototypes
+        .as_mut()
+        .unwrap()
+        .application_domain = class(
+        activation,
+        flash::system::application_domain::create_class(mc),
+        appdomain_deriver,
+        domain,
+        script,
+    )?;
 
     // package `flash.events`
     class(
