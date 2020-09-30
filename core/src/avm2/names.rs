@@ -324,6 +324,7 @@ impl<'gc> Multiname<'gc> {
                     name: Some(name),
                 }
             }
+            AbcMultiname::TypeName { .. } => return Err("TypeName not implemented".into()),
         })
     }
 
