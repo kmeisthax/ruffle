@@ -3294,9 +3294,9 @@ dependencies = [
 name = "ruffle_codec_h263"
 version = "0.1.0"
 dependencies = [
- "enumset 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "num-traits 0.2.12 (registry+https://github.com/rust-lang/crates.io-index)",
- "thiserror 1.0.20 (registry+https://github.com/rust-lang/crates.io-index)",
+ "enumset",
+ "num-traits 0.2.12",
+ "thiserror",
 ]
 
 [[package]]
