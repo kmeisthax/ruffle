@@ -7,6 +7,7 @@ use crate::backend::input::InputBackend;
 use crate::backend::locale::LocaleBackend;
 use crate::backend::log::LogBackend;
 use crate::backend::storage::StorageBackend;
+use crate::backend::video::VideoBackend;
 use crate::backend::{audio::AudioBackend, navigator::NavigatorBackend, render::RenderBackend};
 use crate::display_object::EditText;
 use crate::external::ExternalInterface;
@@ -77,6 +78,9 @@ pub struct UpdateContext<'a, 'gc, 'gc_context> {
 
     /// The logging backend, used for trace output capturing
     pub log: &'a mut dyn LogBackend,
+
+    /// The video backend, used for video decoding
+    pub video: &'a mut dyn VideoBackend,
 
     /// The RNG, used by the AVM `RandomNumber` opcode,  `Math.random(),` and `random()`.
     pub rng: &'a mut SmallRng,
@@ -204,6 +208,7 @@ impl<'a, 'gc, 'gc_context> UpdateContext<'a, 'gc, 'gc_context> {
             renderer: self.renderer,
             locale: self.locale,
             log: self.log,
+            video: self.video,
             input: self.input,
             storage: self.storage,
             rng: self.rng,
