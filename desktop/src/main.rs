@@ -16,6 +16,7 @@ use isahc::config::RedirectPolicy;
 use isahc::prelude::*;
 use ruffle_core::{
     backend::audio::{AudioBackend, NullAudioBackend},
+    backend::video::NullVideoBackend,
     Player,
 };
 use ruffle_render_wgpu::WgpuRenderBackend;
@@ -216,6 +217,7 @@ fn run_player(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
     let input = Box::new(input::WinitInputBackend::new(window.clone()));
     let storage = Box::new(DiskStorageBackend::new());
     let locale = Box::new(locale::DesktopLocaleBackend::new());
+    let video = Box::new(NullVideoBackend::new());
     let player = Player::new(
         renderer,
         audio,
@@ -223,6 +225,7 @@ fn run_player(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
         input,
         storage,
         locale,
+        video,
         Box::new(NullLogBackend::new()),
     )?;
     player.lock().unwrap().set_root_movie(Arc::new(movie));

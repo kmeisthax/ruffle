@@ -8,6 +8,7 @@ use crate::backend::input::{InputBackend, MouseCursor};
 use crate::backend::locale::LocaleBackend;
 use crate::backend::navigator::{NavigatorBackend, RequestOptions};
 use crate::backend::storage::StorageBackend;
+use crate::backend::video::VideoBackend;
 use crate::backend::{
     audio::AudioBackend, log::LogBackend, render::Letterbox, render::RenderBackend,
 };
@@ -134,6 +135,7 @@ type Input = Box<dyn InputBackend>;
 type Storage = Box<dyn StorageBackend>;
 type Locale = Box<dyn LocaleBackend>;
 type Log = Box<dyn LogBackend>;
+type Video = Box<dyn VideoBackend>;
 
 pub struct Player {
     /// The version of the player we're emulating.
@@ -159,6 +161,7 @@ pub struct Player {
     input: Input,
     locale: Locale,
     log: Log,
+    video: Video,
     transform_stack: TransformStack,
     view_matrix: Matrix,
     inverse_view_matrix: Matrix,
@@ -206,6 +209,7 @@ pub struct Player {
 }
 
 impl Player {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         renderer: Renderer,
         audio: Audio,
@@ -213,6 +217,7 @@ impl Player {
         input: Input,
         storage: Storage,
         locale: Locale,
+        video: Video,
         log: Log,
     ) -> Result<Arc<Mutex<Self>>, Error> {
         let fake_movie = Arc::new(SwfMovie::empty(NEWEST_PLAYER_VERSION));
@@ -280,6 +285,7 @@ impl Player {
             input,
             locale,
             log,
+            video,
             self_reference: None,
             system: SystemProperties::default(),
             instance_counter: 0,
@@ -1084,6 +1090,7 @@ impl Player {
             storage,
             locale,
             logging,
+            video,
             needs_render,
             max_execution_duration,
         ) = (
@@ -1104,6 +1111,7 @@ impl Player {
             self.storage.deref_mut(),
             self.locale.deref_mut(),
             self.log.deref_mut(),
+            self.video.deref_mut(),
             &mut self.needs_render,
             self.max_execution_duration,
         );
@@ -1151,6 +1159,7 @@ impl Player {
                 storage,
                 locale,
                 log: logging,
+                video,
                 shared_objects,
                 unbound_text_fields,
                 timers,
