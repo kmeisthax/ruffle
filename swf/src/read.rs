@@ -2744,7 +2744,7 @@ impl<R: Read> Reader<R> {
         })
     }
 
-    fn read_define_video_stream(&mut self) -> Result<Tag> {
+    pub fn read_define_video_stream(&mut self) -> Result<Tag> {
         let id = self.read_character_id()?;
         let num_frames = self.read_u16()?;
         let width = self.read_u16()?;
@@ -2777,7 +2777,7 @@ impl<R: Read> Reader<R> {
         }))
     }
 
-    fn read_video_frame(&mut self) -> Result<Tag> {
+    pub fn read_video_frame(&mut self) -> Result<Tag> {
         let stream_id = self.read_character_id()?;
         let frame_num = self.read_u16()?;
         let mut data = vec![];
