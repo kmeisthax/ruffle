@@ -404,6 +404,10 @@ impl<'gc> MovieClip<'gc> {
                         tag_len,
                     )
                 }
+                TagCode::VideoFrame => self
+                    .0
+                    .write(context.gc_context)
+                    .preload_video_frame(context, reader),
                 _ => Ok(()),
             }
         };
@@ -2285,6 +2289,32 @@ impl<'gc, 'a> MovieClipData<'gc> {
             .preload_sound_stream_head(self.id(), cur_frame, &audio_stream_info);
         static_data.audio_stream_info = Some(audio_stream_info);
         Ok(())
+    }
+
+    #[inline]
+    fn preload_video_frame(
+        &mut self,
+        context: &mut UpdateContext<'_, 'gc, '_>,
+        reader: &mut SwfStream<&'a [u8]>,
+    ) -> DecodeResult {
+        match reader.read_video_frame()? {
+            Tag::VideoFrame(vframe) => {
+                let library = context.library.library_for_movie_mut(self.movie());
+                match library.get_character_by_id(vframe.stream_id) {
+                    Some(Character::Video(mut v)) => {
+                        v.preload_swf_frame(vframe, context);
+
+                        Ok(())
+                    }
+                    _ => Err(format!(
+                        "Attempted to preload video frames into non-video character {}",
+                        vframe.stream_id
+                    )
+                    .into()),
+                }
+            }
+            _ => unreachable!(),
+        }
     }
 
     #[inline]
