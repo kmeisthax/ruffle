@@ -409,6 +409,7 @@ swf_tests! {
     (as3_movieclip_constr, "avm2/movieclip_constr", 1),
     (as3_lazyinit, "avm2/lazyinit", 1),
     (as3_trace, "avm2/trace", 1),
+    (as3_execution_order, "avm2/execution_order", 4),
 }
 
 // TODO: These tests have some inaccuracies currently, so we use approx_eq to test that numeric values are close enough.
