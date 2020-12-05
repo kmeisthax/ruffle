@@ -3163,6 +3163,7 @@ dependencies = [
  "quick-xml",
  "rand 0.8.4",
  "regress",
+ "ruffle_codec_h263",
  "ruffle_macros",
  "serde",
  "smallvec",
