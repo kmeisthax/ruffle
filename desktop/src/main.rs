@@ -9,6 +9,7 @@ mod navigator;
 mod storage;
 mod task;
 mod ui;
+mod video;
 
 use crate::custom_event::RuffleEvent;
 use crate::executor::GlutinAsyncExecutor;
@@ -16,7 +17,6 @@ use clap::Clap;
 use isahc::{config::RedirectPolicy, prelude::*, HttpClient};
 use ruffle_core::{
     backend::audio::{AudioBackend, NullAudioBackend},
-    backend::video::NullVideoBackend,
     Player,
 };
 use ruffle_render_wgpu::WgpuRenderBackend;
@@ -226,7 +226,7 @@ fn run_player(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
     let storage = Box::new(DiskStorageBackend::new());
     let user_interface = Box::new(ui::DesktopUiBackend::new());
     let locale = Box::new(locale::DesktopLocaleBackend::new());
-    let video = Box::new(NullVideoBackend::new());
+    let video = Box::new(video::DesktopVideoBackend::new());
     let player = Player::new(
         renderer,
         audio,

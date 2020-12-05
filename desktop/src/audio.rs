@@ -4,7 +4,7 @@ use ruffle_core::backend::audio::decoders::{
     self, AdpcmDecoder, Mp3Decoder, PcmDecoder, SeekableDecoder,
 };
 use ruffle_core::backend::audio::{
-    swf, AudioBackend, AudioStreamHandle, SoundHandle, SoundInstanceHandle,
+    AudioBackend, AudioStreamHandle, SoundHandle, SoundInstanceHandle,
 };
 use ruffle_core::tag_utils::SwfSlice;
 use std::io::Cursor;
