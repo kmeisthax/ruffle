@@ -8,3 +8,4 @@ mod types;
 
 pub use decoder::{DecoderOption, H263State};
 pub use error::{Error, Result};
+pub use types::PictureTypeCode;
