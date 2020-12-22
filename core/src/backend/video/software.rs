@@ -7,6 +7,7 @@ use crate::backend::video::{
 use generational_arena::Arena;
 use ruffle_codec_h263::parser::{decode_picture, H263Reader};
 use ruffle_codec_h263::{DecoderOption, H263State, PictureTypeCode};
+use ruffle_codec_yuv::bt601::yuv422_to_rgba;
 use swf::{VideoCodec, VideoDeblocking};
 
 /// A single preloaded video stream.
@@ -61,7 +62,7 @@ impl VideoBackend for SoftwareVideoBackend {
             .ok_or("Unregistered video stream")?;
 
         match stream {
-            VideoStream::H263(state) => {
+            VideoStream::H263(_state) => {
                 let mut reader = H263Reader::from_source(encoded_frame.data());
                 let picture =
                     decode_picture(&mut reader, DecoderOption::SorensonSparkBitstream, None)?
@@ -98,10 +99,20 @@ impl VideoBackend for SoftwareVideoBackend {
                     .get_last_picture()
                     .expect("Decoding a picture should let us grab that picture");
 
-                //TODO: YUV 4:2:0 decoding
-                //TODO: Construct a bitmap drawable for the renderer and hand
-                //it back
-                unimplemented!("oops");
+                let (width, height) = picture
+                    .format()
+                    .into_width_and_height()
+                    .ok_or("H.263 decoder error!")?;
+                let (y, b, r) = picture.as_yuv();
+                let rgba = yuv422_to_rgba(y, b, r, width.into());
+
+                let handle = renderer.register_bitmap_raw(width.into(), height.into(), rgba)?;
+
+                Ok(BitmapInfo {
+                    handle,
+                    width,
+                    height,
+                })
             }
         }
     }
