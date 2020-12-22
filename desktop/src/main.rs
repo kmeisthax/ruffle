@@ -8,7 +8,6 @@ mod locale;
 mod navigator;
 mod storage;
 mod task;
-mod video;
 
 use crate::custom_event::RuffleEvent;
 use crate::executor::GlutinAsyncExecutor;
@@ -28,6 +27,7 @@ use url::Url;
 
 use crate::storage::DiskStorageBackend;
 use ruffle_core::backend::log::NullLogBackend;
+use ruffle_core::backend::video;
 use ruffle_core::tag_utils::SwfMovie;
 use ruffle_render_wgpu::clap::{GraphicsBackend, PowerPreference};
 use std::io::Read;
@@ -217,7 +217,7 @@ fn run_player(opt: Opt) -> Result<(), Box<dyn std::error::Error>> {
     let input = Box::new(input::WinitInputBackend::new(window.clone()));
     let storage = Box::new(DiskStorageBackend::new());
     let locale = Box::new(locale::DesktopLocaleBackend::new());
-    let video = Box::new(video::DesktopVideoBackend::new());
+    let video = Box::new(video::SoftwareVideoBackend::new());
     let player = Player::new(
         renderer,
         audio,
