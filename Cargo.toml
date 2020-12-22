@@ -14,6 +14,7 @@ members = [
     "render/webgl",
 
     "codecs/h263",
+    "codecs/yuv",
 ]
 
 # Don't optimize build scripts and macros.
