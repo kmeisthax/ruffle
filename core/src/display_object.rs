@@ -829,29 +829,34 @@ pub trait TDisplayObject<'gc>:
     fn as_container(self) -> Option<DisplayObjectContainer<'gc>> {
         None
     }
+    fn as_video(self) -> Option<Video<'gc>> {
+        None
+    }
 
     fn apply_place_object(
         &self,
-        gc_context: MutationContext<'gc, '_>,
+        context: &mut UpdateContext<'_, 'gc, '_>,
         place_object: &swf::PlaceObject,
     ) {
         // PlaceObject tags only apply if this onject has not been dynamically moved by AS code.
         if !self.transformed_by_script() {
             if let Some(matrix) = &place_object.matrix {
-                self.set_matrix(gc_context, &matrix);
+                self.set_matrix(context.gc_context, &matrix);
             }
             if let Some(color_transform) = &place_object.color_transform {
-                self.set_color_transform(gc_context, &color_transform.clone().into());
+                self.set_color_transform(context.gc_context, &color_transform.clone().into());
             }
             if let Some(name) = &place_object.name {
-                self.set_name(gc_context, name);
+                self.set_name(context.gc_context, name);
             }
             if let Some(clip_depth) = place_object.clip_depth {
-                self.set_clip_depth(gc_context, clip_depth.into());
+                self.set_clip_depth(context.gc_context, clip_depth.into());
             }
             if let Some(ratio) = place_object.ratio {
                 if let Some(mut morph_shape) = self.as_morph_shape() {
-                    morph_shape.set_ratio(gc_context, ratio);
+                    morph_shape.set_ratio(context.gc_context, ratio);
+                } else if let Some(mut video) = self.as_video() {
+                    video.seek(context, ratio);
                 }
             }
             // Clip events only apply to movie clips.
@@ -861,7 +866,7 @@ pub trait TDisplayObject<'gc>:
                 // Convert from `swf::ClipAction` to Ruffle's `ClipAction`.
                 use crate::display_object::movie_clip::ClipAction;
                 clip.set_clip_actions(
-                    gc_context,
+                    context.gc_context,
                     clip_actions
                         .iter()
                         .cloned()
