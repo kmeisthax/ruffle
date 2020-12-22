@@ -3301,6 +3301,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "ruffle_codec_yuv"
+version = "0.1.0"
+
+[[package]]
 name = "ruffle_core"
 version = "0.1.0"
 dependencies = [
