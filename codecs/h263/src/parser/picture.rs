@@ -319,7 +319,9 @@ where
 
         let mut options = EnumSet::empty();
 
-        options |= PictureOption::UseDeblocker;
+        if reader.read_bits::<u8>(1)? == 1 {
+            options |= PictureOption::UseDeblocker;
+        }
 
         Ok((source_format.unwrap(), picture_type, options))
     })
