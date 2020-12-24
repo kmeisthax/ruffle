@@ -734,13 +734,13 @@ where
                         tcoef.push(TCoefficient {
                             is_short: true,
                             run,
-                            level: level as i8 as i16,
+                            level: level as i16,
                         })
                     } else {
                         tcoef.push(TCoefficient {
                             is_short: true,
                             run,
-                            level: -(level as i8 as i16),
+                            level: -(level as i16),
                         })
                     }
 
