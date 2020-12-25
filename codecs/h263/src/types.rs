@@ -653,7 +653,7 @@ pub struct CodedBlockPattern {
 }
 
 /// Half-pixel motion vector components.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct HalfPel(i16);
 
 impl From<f32> for HalfPel {
@@ -753,7 +753,7 @@ impl Neg for HalfPel {
 }
 
 /// A motion vector consisting of X and Y components.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct MotionVector(HalfPel, HalfPel);
 
 impl MotionVector {
