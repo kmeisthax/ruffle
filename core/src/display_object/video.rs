@@ -101,6 +101,10 @@ impl<'gc> Video<'gc> {
                 streamdef: _streamdef,
                 frames,
             } => {
+                if frames.contains_key(&tag.frame_num.into()) {
+                    log::warn!("Duplicate frame {}", tag.frame_num);
+                }
+
                 frames.insert(tag.frame_num.into(), tag.data);
             }
         }
