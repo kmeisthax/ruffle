@@ -10,6 +10,7 @@ use std::ops::{Add, Div, Neg};
 /// The `Picture` configures the current displayed frame's various options,
 /// such as it's resolution, the use of any optional H.263 features, and the
 /// intra-prediction mode used.
+#[derive(Debug)]
 pub struct Picture {
     /// The version code.
     ///
@@ -132,7 +133,7 @@ pub struct Picture {
 /// Most other `SourceFormat` variants are multiples of the CIF picture count.
 /// Note that the multiples refer to total pixel count; i.e. a `FourCIF` format
 /// image is twice the width and height of a `FullCIF` format image.
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub enum SourceFormat {
     /// 128x96 @ 30000/1001hz
     SubQCIF,
@@ -189,7 +190,7 @@ impl SourceFormat {
 /// Certain combinations of `PictureOption`s are mutually exclusive and using
 /// them together will result in errors in compliant decoders. Some
 /// `PictureTypeCode`s will also prohibit the use of certain `PictureOption`s.
-#[derive(EnumSetType)]
+#[derive(EnumSetType, Debug)]
 pub enum PictureOption {
     UseSplitScreen,
     UseDocumentCamera,
@@ -298,7 +299,7 @@ impl PictureTypeCode {
 /// ITU-T Recommendation H.263 (01/2005) 5.1.5-5.1.6 `CPFMT`, `EPAR`
 ///
 /// This defines a "custom" picture format, outside of the standard CIF options.
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub struct CustomPictureFormat {
     /// The aspect ratio of a single pixel.
     pub pixel_aspect_ratio: PixelAspectRatio,
@@ -325,7 +326,7 @@ pub struct CustomPictureFormat {
 /// Most modern video formats should be `Square`. Legacy analog formats may be
 /// stored in one of the `ParNN_NN` formats. A custom PAR may be indicated with
 /// the `Extended` option.
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub enum PixelAspectRatio {
     /// 1:1 pixel aspect ratio. Most common on modern displays.
     Square,
@@ -377,6 +378,7 @@ pub struct CustomPictureClock {
 ///
 /// Indicates the new motion vector range limitations when
 /// `UnrestrictedMotionVectors` are enabled.
+#[derive(Debug)]
 pub enum MotionVectorRange {
     /// Motion vector component ranges are extended to limits that are
     /// prescribed in ITU-T Recommendation H.263 (01/2005) D.1 and D.2.
@@ -389,7 +391,7 @@ pub enum MotionVectorRange {
 /// ITU-T Recommendation H.263 (01/2005) 5.1.9 `SSS`
 ///
 /// Indicates slice configuration when slice-structured mode is enabled.
-#[derive(EnumSetType)]
+#[derive(EnumSetType, Debug)]
 pub enum SliceSubmode {
     /// Slices must be rectantular rather than free-running.
     RectangularSlices,
@@ -401,6 +403,7 @@ pub enum SliceSubmode {
 /// ITU-T Recommendation H.263 (01/2005) 5.1.11-5.1.12 `ELNUM`, `RLNUM`
 ///
 /// Only present if Temporal, SNR, and Spatial Scalability is enabled.
+#[derive(Debug)]
 pub struct ScalabilityLayer {
     /// The 4-bit enhancement layer index.
     pub enhancement: u8,
@@ -417,7 +420,7 @@ pub struct ScalabilityLayer {
 ///
 /// Indicates what backchannel messages the encoder would like out of it's
 /// decoding partner.
-#[derive(EnumSetType)]
+#[derive(EnumSetType, Debug)]
 pub enum ReferencePictureSelectionMode {
     Reserved,
     RequestNegativeAcknowledgement,
@@ -430,6 +433,7 @@ pub enum ReferencePictureSelectionMode {
 /// video stream is sending in response to an opposing video stream. It may be
 /// presented to the encoder with a separate logical channel, or it may be
 /// muxed into a video stream that the encoder is also expected to decode.
+#[derive(Debug)]
 pub struct BackchannelMessage {
     /// What message type is being back-channeled.
     message_type: BackchannelMessageType,
@@ -459,6 +463,7 @@ pub struct BackchannelMessage {
 /// ITU-T Recommendation H.263 (01/2005) N.4.2.1 `BT`
 ///
 /// Indicates the backchanneler's decoding status of the opposing video stream.
+#[derive(Debug)]
 pub enum BackchannelMessageType {
     /// Positive acknowledgement of correct decoding of the opposing video
     /// stream.
@@ -476,6 +481,7 @@ pub enum BackchannelMessageType {
 ///
 /// Whether or not the backchanneling decoder has reliable values for temporal
 /// references, group-of-block numbers, or macroblock addresses.
+#[derive(Debug)]
 pub enum BackchannelReliability {
     Reliable,
     Unreliable,
@@ -484,6 +490,7 @@ pub enum BackchannelReliability {
 /// ITU-T Recommendation H.263 (01/2005) P.2 `RPRP`
 ///
 /// The parameters necessary for reference-picture resampling.
+#[derive(Debug)]
 pub struct ReferencePictureResampling {
     accuracy: WarpingDisplacementAccuracy,
 
@@ -496,6 +503,7 @@ pub struct ReferencePictureResampling {
 }
 
 /// ITU-T Recommendation H.263 (01/2005) P.2.1 `WDA`
+#[derive(Debug)]
 pub enum WarpingDisplacementAccuracy {
     /// Warping parameters are quantized to half-pixel accuracy.
     HalfPixel,
@@ -505,6 +513,7 @@ pub enum WarpingDisplacementAccuracy {
 }
 
 /// ITU-T Recommendation H.263 (01/2005), 5.1.23 `DBQUANT`
+#[derive(Debug)]
 pub enum BPictureQuantizer {
     FiveFourths,
     SixFourths,
@@ -546,6 +555,7 @@ pub struct GroupOfBlocks {
 }
 
 /// ITU-T Recommendation H.263 (01/2005), 5.3 Macroblock layer
+#[derive(Debug)]
 pub enum Macroblock {
     /// Indicates a macroblock that isn't coded.
     ///
@@ -649,7 +659,7 @@ impl MacroblockType {
 ///
 /// Coded block pattern bits that indicate which blocks contain frequency
 /// components to be coded for.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct CodedBlockPattern {
     pub codes_luma: [bool; 4],
     pub codes_chroma_b: bool,
