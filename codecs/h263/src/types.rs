@@ -464,6 +464,7 @@ pub struct BackchannelMessage {
 ///
 /// Indicates the backchanneler's decoding status of the opposing video stream.
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum BackchannelMessageType {
     /// Positive acknowledgement of correct decoding of the opposing video
     /// stream.
@@ -482,6 +483,7 @@ pub enum BackchannelMessageType {
 /// Whether or not the backchanneling decoder has reliable values for temporal
 /// references, group-of-block numbers, or macroblock addresses.
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum BackchannelReliability {
     Reliable,
     Unreliable,
@@ -504,6 +506,7 @@ pub struct ReferencePictureResampling {
 
 /// ITU-T Recommendation H.263 (01/2005) P.2.1 `WDA`
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum WarpingDisplacementAccuracy {
     /// Warping parameters are quantized to half-pixel accuracy.
     HalfPixel,
