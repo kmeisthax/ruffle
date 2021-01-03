@@ -7,7 +7,7 @@ use crate::backend::video::{
 use generational_arena::Arena;
 use ruffle_codec_h263::parser::{decode_picture, H263Reader};
 use ruffle_codec_h263::{DecoderOption, H263State, PictureTypeCode};
-use ruffle_codec_yuv::bt601::yuv422_to_rgba;
+use ruffle_codec_yuv::bt601::yuv420_to_rgba;
 use swf::{VideoCodec, VideoDeblocking};
 
 /// A single preloaded video stream.
@@ -112,7 +112,7 @@ impl VideoBackend for SoftwareVideoBackend {
                     .ok_or("H.263 decoder error!")?;
                 let chroma_width = picture.chroma_samples_per_row();
                 let (y, b, r) = picture.as_yuv();
-                let rgba = yuv422_to_rgba(y, b, r, width.into(), chroma_width);
+                let rgba = yuv420_to_rgba(y, b, r, width.into(), chroma_width);
 
                 let handle = renderer.register_bitmap_raw(width.into(), height.into(), rgba)?;
 
