@@ -1,6 +1,6 @@
 //! Pure software video decoding backend.
 
-use crate::backend::render::{BitmapInfo, RenderBackend};
+use crate::backend::render::{BitmapHandle, BitmapInfo, RenderBackend};
 use crate::backend::video::{
     EncodedFrame, Error, FrameDependency, VideoBackend, VideoStreamHandle,
 };
@@ -13,7 +13,7 @@ use swf::{VideoCodec, VideoDeblocking};
 /// A single preloaded video stream.
 pub enum VideoStream {
     /// An H.263 video stream.
-    H263(H263State),
+    H263(H263State, Option<BitmapHandle>),
 }
 
 /// Desktop video backend.
@@ -48,9 +48,10 @@ impl VideoBackend for SoftwareVideoBackend {
         _filter: VideoDeblocking,
     ) -> Result<VideoStreamHandle, Error> {
         match codec {
-            VideoCodec::H263 => Ok(self.streams.insert(VideoStream::H263(H263State::new(
-                DecoderOption::SorensonSparkBitstream.into(),
-            )))),
+            VideoCodec::H263 => Ok(self.streams.insert(VideoStream::H263(
+                H263State::new(DecoderOption::SorensonSparkBitstream.into()),
+                None,
+            ))),
             _ => Err(format!("Unsupported video codec type {:?}", codec).into()),
         }
     }
@@ -66,7 +67,7 @@ impl VideoBackend for SoftwareVideoBackend {
             .ok_or("Unregistered video stream")?;
 
         match stream {
-            VideoStream::H263(_state) => {
+            VideoStream::H263(_state, _last_bitmap) => {
                 let mut reader = H263Reader::from_source(encoded_frame.data());
                 let picture = decode_picture(
                     &mut reader,
@@ -97,7 +98,7 @@ impl VideoBackend for SoftwareVideoBackend {
             .ok_or("Unregistered video stream")?;
 
         match stream {
-            VideoStream::H263(state) => {
+            VideoStream::H263(state, last_bitmap) => {
                 let mut reader = H263Reader::from_source(encoded_frame.data());
 
                 state.decode_next_picture(&mut reader)?;
@@ -114,7 +115,13 @@ impl VideoBackend for SoftwareVideoBackend {
                 let (y, b, r) = picture.as_yuv();
                 let rgba = yuv420_to_rgba(y, b, r, width.into(), chroma_width);
 
-                let handle = renderer.register_bitmap_raw(width.into(), height.into(), rgba)?;
+                let handle = if let Some(lb) = last_bitmap {
+                    renderer.update_texture(*lb, width.into(), height.into(), rgba)?
+                } else {
+                    renderer.register_bitmap_raw(width.into(), height.into(), rgba)?
+                };
+
+                *last_bitmap = Some(handle);
 
                 Ok(BitmapInfo {
                     handle,
