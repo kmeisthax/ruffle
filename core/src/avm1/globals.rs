@@ -55,6 +55,7 @@ pub(crate) mod system_security;
 pub(crate) mod text_field;
 mod text_format;
 mod transform;
+mod video;
 mod xml;
 
 pub fn random<'gc>(
@@ -500,6 +501,8 @@ pub struct SystemPrototypes<'gc> {
     pub date: Object<'gc>,
     pub bitmap_data: Object<'gc>,
     pub bitmap_data_constructor: Object<'gc>,
+    pub video: Object<'gc>,
+    pub video_constructor: Object<'gc>,
 }
 
 /// Initialize default global scope and builtins for an AVM1 instance.
@@ -574,6 +577,8 @@ pub fn create_globals<'gc>(
         movie_clip_loader_proto,
     );
     let date_proto: Object<'gc> = date::create_proto(gc_context, object_proto, function_proto);
+
+    let video_proto: Object<'gc> = video::create_proto(gc_context, object_proto, function_proto);
 
     //TODO: These need to be constructors and should also set `.prototype` on each one
     let object = object::create_object_object(gc_context, object_proto, function_proto);
@@ -677,6 +682,12 @@ pub fn create_globals<'gc>(
         Executable::Native(transform::constructor),
         Some(function_proto),
         transform_proto,
+    );
+    let video = FunctionObject::constructor(
+        gc_context,
+        Executable::Native(video::constructor),
+        Some(function_proto),
+        video_proto,
     );
 
     flash.define_value(gc_context, "geom", geom.into(), EnumSet::empty());
@@ -1119,6 +1130,8 @@ pub fn create_globals<'gc>(
             date: date_proto,
             bitmap_data: bitmap_data_proto,
             bitmap_data_constructor: bitmap_data,
+            video: video_proto,
+            video_constructor: video,
         },
         globals.into(),
         broadcaster_functions,
