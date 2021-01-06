@@ -838,9 +838,9 @@ impl From<(HalfPel, HalfPel)> for MotionVector {
     }
 }
 
-impl Into<(HalfPel, HalfPel)> for MotionVector {
-    fn into(self) -> (HalfPel, HalfPel) {
-        (self.0, self.1)
+impl From<MotionVector> for (HalfPel, HalfPel) {
+    fn from(mv: MotionVector) -> Self {
+        (mv.0, mv.1)
     }
 }
 
