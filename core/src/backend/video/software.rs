@@ -46,7 +46,7 @@ impl VideoBackend for SoftwareVideoBackend {
     ) -> Result<VideoStreamHandle, Error> {
         match codec {
             VideoCodec::H263 => Ok(self.streams.insert(VideoStream::H263(
-                H263State::new(DecoderOption::SorensonSparkBitstream),
+                H263State::new(DecoderOption::SORENSON_SPARK_BITSTREAM),
                 None,
             ))),
             _ => Err(format!("Unsupported video codec type {:?}", codec).into()),
@@ -67,7 +67,7 @@ impl VideoBackend for SoftwareVideoBackend {
             VideoStream::H263(_state, _last_bitmap) => {
                 let mut reader = H263Reader::from_source(encoded_frame.data());
                 let picture =
-                    decode_picture(&mut reader, DecoderOption::SorensonSparkBitstream, None)?
+                    decode_picture(&mut reader, DecoderOption::SORENSON_SPARK_BITSTREAM, None)?
                         .ok_or("Picture in video stream is not a picture")?;
 
                 match picture.picture_type {
