@@ -464,6 +464,27 @@ impl<'gc> Multiname<'gc> {
 
         false
     }
+
+    /// Determine if a multiname set can be satisfied by a given type name.
+    ///
+    /// This is similar to `TObject`'s `resolve_multiname` logic, but with a
+    /// single hypothetical `QName` instead of an entire object with a hash
+    /// table to check.
+    pub fn is_satisfied_by_qname(&self, name: &QName<'gc>) -> bool {
+        for ns in self.namespace_set() {
+            if ns.is_any() || ns == name.namespace() {
+                if let Some(local) = self.local_name() {
+                    if local == name.local_name() {
+                        return true;
+                    }
+                } else {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
 }
 
 impl<'gc> From<QName<'gc>> for Multiname<'gc> {

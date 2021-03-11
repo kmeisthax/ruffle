@@ -902,6 +902,23 @@ pub trait TObject<'gc>: 'gc + Collect + Debug + Into<Object<'gc>> + Clone + Copy
         Ok(false)
     }
 
+    /// Determine if this object's type name matches a given name.
+    ///
+    /// This will also match supertypes.
+    fn is_of_type(self, type_name: &Multiname<'gc>) -> bool {
+        if let Some(class) = self.as_class() {
+            if type_name.is_satisfied_by_qname(class.read().name()) {
+                return true;
+            }
+        }
+
+        if let Some(proto) = self.proto() {
+            return proto.is_of_type(type_name);
+        }
+
+        false
+    }
+
     /// Get a raw pointer value for this object.
     fn as_ptr(&self) -> *const ObjectPtr;
 
