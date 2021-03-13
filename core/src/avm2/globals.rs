@@ -29,6 +29,7 @@ mod object;
 mod regexp;
 mod string;
 mod r#uint;
+mod vector;
 mod xml;
 mod xml_list;
 
@@ -493,6 +494,7 @@ pub fn load_player_globals<'gc>(
 
     class(activation, math::create_class(mc), domain, script)?;
     avm2_system_class!(regexp, activation, regexp::create_class(mc), domain, script);
+    class(activation, vector::create_class(mc), domain, script)?;
 
     avm2_system_class!(xml, activation, xml::create_class(mc), domain, script);
     avm2_system_class!(
