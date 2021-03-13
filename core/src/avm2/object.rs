@@ -34,6 +34,7 @@ mod primitive_object;
 mod regexp_object;
 mod script_object;
 mod stage_object;
+mod vector_object;
 mod xml_object;
 
 pub use crate::avm2::object::array_object::ArrayObject;
@@ -48,6 +49,7 @@ pub use crate::avm2::object::primitive_object::PrimitiveObject;
 pub use crate::avm2::object::regexp_object::RegExpObject;
 pub use crate::avm2::object::script_object::ScriptObject;
 pub use crate::avm2::object::stage_object::StageObject;
+pub use crate::avm2::object::vector_object::VectorObject;
 pub use crate::avm2::object::xml_object::XmlObject;
 
 /// Represents an object that can be directly interacted with by the AVM2
@@ -69,6 +71,7 @@ pub use crate::avm2::object::xml_object::XmlObject;
         RegExpObject(RegExpObject<'gc>),
         ByteArrayObject(ByteArrayObject<'gc>),
         LoaderInfoObject(LoaderInfoObject<'gc>),
+        VectorObject(VectorObject<'gc>),
     }
 )]
 pub trait TObject<'gc>: 'gc + Collect + Debug + Into<Object<'gc>> + Clone + Copy {
@@ -902,18 +905,18 @@ pub trait TObject<'gc>: 'gc + Collect + Debug + Into<Object<'gc>> + Clone + Copy
         Ok(false)
     }
 
-    /// Determine if this object's type name matches a given name.
+    /// Determine if this object is of a given type class.
     ///
     /// This will also match supertypes.
-    fn is_of_type(self, type_name: &Multiname<'gc>) -> bool {
+    fn is_of_type(self, type_class: GcCell<'gc, Class<'gc>>) -> bool {
         if let Some(class) = self.as_class() {
-            if type_name.is_satisfied_by_qname(class.read().name()) {
+            if GcCell::ptr_eq(type_class, class) {
                 return true;
             }
         }
 
         if let Some(proto) = self.proto() {
-            return proto.is_of_type(type_name);
+            return proto.is_of_type(type_class);
         }
 
         false

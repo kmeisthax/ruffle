@@ -1,22 +1,23 @@
 //! Storage for AS3 Vectors
 
 use crate::avm2::activation::Activation;
-use crate::avm2::names::{Multiname, Namespace, QName};
+use crate::avm2::class::Class;
+use crate::avm2::names::{Namespace, QName};
 use crate::avm2::object::TObject;
 use crate::avm2::value::Value;
 use crate::avm2::Error;
-use gc_arena::Collect;
+use gc_arena::{Collect, GcCell};
 
 /// The vector storage portion of a vector object.
 ///
 /// Vector values are restricted to a single type, decided at the time of the
 /// construction of the vector's storage. The type is determined by the type
 /// argument associated with the class of the vector. Vector holes are
-/// evaluated to a default value based on the
+/// evaluated to a default value based on the type of the vector.
 ///
 /// A vector may also be configured to have a fixed size; when this is enabled,
 /// attempts to modify the length fail.
-#[derive(Collect)]
+#[derive(Collect, Debug, Clone)]
 #[collect(no_drop)]
 pub struct VectorStorage<'gc> {
     /// The storage for vector values.
@@ -38,11 +39,11 @@ pub struct VectorStorage<'gc> {
     /// incorrectly typed values to the given type if possible. Values that do
     /// not coerce would then be treated as vector holes and retrieved as a
     /// default value.
-    value_type: Multiname<'gc>,
+    value_type: GcCell<'gc, Class<'gc>>,
 }
 
 impl<'gc> VectorStorage<'gc> {
-    fn new(length: usize, is_fixed: bool, value_type: Multiname<'gc>) -> Self {
+    pub fn new(length: usize, is_fixed: bool, value_type: GcCell<'gc, Class<'gc>>) -> Self {
         let mut storage = Vec::new();
 
         storage.resize(length, None);
@@ -66,65 +67,54 @@ impl<'gc> VectorStorage<'gc> {
 
     /// Get the default value for this vector.
     fn default(&self) -> Value<'gc> {
-        if self
-            .value_type
-            .is_satisfied_by_qname(&QName::new(Namespace::public(), "int"))
-        {
+        if self.value_type.read().name() == &QName::new(Namespace::public(), "int") {
             Value::Integer(0)
-        } else if self
-            .value_type
-            .is_satisfied_by_qname(&QName::new(Namespace::public(), "uint"))
-        {
+        } else if self.value_type.read().name() == &QName::new(Namespace::public(), "uint") {
             Value::Unsigned(0)
-        } else if self
-            .value_type
-            .is_satisfied_by_qname(&QName::new(Namespace::public(), "Number"))
-        {
+        } else if self.value_type.read().name() == &QName::new(Namespace::public(), "Number") {
             Value::Number(0.0)
         } else {
             Value::Null
         }
     }
 
+    pub fn value_type(&self) -> GcCell<'gc, Class<'gc>> {
+        self.value_type
+    }
+
     /// Coerce an incoming value into one compatible with our vector.
     ///
+    /// You must call this before storing values in the vector with the type of
+    /// the vector. The reason why this function is an associated type is
+    /// because it can potentially execute user code and thus the containing
+    /// vector object must not be locked.
+    ///
     /// Values that cannot be coerced into the target type will be turned into
-    /// `None`.
-    fn coerce(
-        &self,
+    /// `None` or yield an error as follows:
+    ///
+    ///  * The coercion fails
+    ///  * The vector is of a non-coercible type, and the value is not an
+    ///    instance or subclass instance of the vector's type
+    pub fn coerce(
         from: Value<'gc>,
+        to_type: GcCell<'gc, Class<'gc>>,
         activation: &mut Activation<'_, 'gc, '_>,
     ) -> Result<Option<Value<'gc>>, Error> {
-        if self
-            .value_type
-            .is_satisfied_by_qname(&QName::new(Namespace::public(), "int"))
-        {
+        if to_type.read().name() == &QName::new(Namespace::public(), "int") {
             Ok(Some(from.coerce_to_i32(activation)?.into()))
-        } else if self
-            .value_type
-            .is_satisfied_by_qname(&QName::new(Namespace::public(), "uint"))
-        {
+        } else if to_type.read().name() == &QName::new(Namespace::public(), "uint") {
             Ok(Some(from.coerce_to_u32(activation)?.into()))
-        } else if self
-            .value_type
-            .is_satisfied_by_qname(&QName::new(Namespace::public(), "Number"))
-        {
+        } else if to_type.read().name() == &QName::new(Namespace::public(), "Number") {
             Ok(Some(from.coerce_to_number(activation)?.into()))
-        } else if self
-            .value_type
-            .is_satisfied_by_qname(&QName::new(Namespace::public(), "String"))
-        {
+        } else if to_type.read().name() == &QName::new(Namespace::public(), "String") {
             Ok(Some(from.coerce_to_string(activation)?.into()))
-        } else if self
-            .value_type
-            .is_satisfied_by_qname(&QName::new(Namespace::public(), "Boolean"))
-        {
+        } else if to_type.read().name() == &QName::new(Namespace::public(), "Boolean") {
             Ok(Some(from.coerce_to_boolean().into()))
         } else if matches!(from, Value::Undefined) || matches!(from, Value::Null) {
             Ok(None)
         } else {
             let object_form = from.coerce_to_object(activation)?;
-            if object_form.is_of_type(&self.value_type) {
+            if object_form.is_of_type(to_type) {
                 return Ok(Some(from));
             }
 
@@ -142,7 +132,7 @@ impl<'gc> VectorStorage<'gc> {
     /// Retrieve a value from the vector.
     ///
     /// If the value is `None`, the type default value will be substituted.
-    fn get(&self, pos: usize) -> Result<Value<'gc>, Error> {
+    pub fn get(&self, pos: usize) -> Result<Value<'gc>, Error> {
         self.storage
             .get(pos)
             .cloned()
@@ -152,23 +142,17 @@ impl<'gc> VectorStorage<'gc> {
 
     /// Store a value into the vector.
     ///
-    /// If the value is not of the vector's type, then the value will be
-    /// coerced to fit as per `coerce`. This function yields an error if:
+    /// This function does no coercion as calling it requires mutably borrowing
+    /// the vector (and thus it is unwise to reenter the AVM2 runtime to coerce
+    /// things). You must use the associated `coerce` fn before storing things
+    /// in the vector.
     ///
-    ///  * The coercion fails
-    ///  * The vector is of a non-coercible type, and the value is not an
-    ///    instance or subclass instance of the vector's type
-    ///  * The position is outside the length of the vector
-    fn set(
-        &mut self,
-        pos: usize,
-        value: Value<'gc>,
-        activation: &mut Activation<'_, 'gc, '_>,
-    ) -> Result<(), Error> {
-        let coerced_value = self.coerce(value, activation)?;
+    /// This function yields an error if the position is outside the length of
+    /// the vector.
+    pub fn set(&mut self, pos: usize, value: Option<Value<'gc>>) -> Result<(), Error> {
         self.storage
             .get_mut(pos)
-            .map(|v| *v = coerced_value)
+            .map(|v| *v = value)
             .ok_or_else(|| format!("RangeError: {} is outside the range of the vector", pos).into())
     }
 }
