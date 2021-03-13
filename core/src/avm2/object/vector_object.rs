@@ -29,6 +29,29 @@ pub struct VectorObjectData<'gc> {
     vector: VectorStorage<'gc>,
 }
 
+impl<'gc> VectorObject<'gc> {
+    pub fn derive(
+        base_proto: Object<'gc>,
+        mc: MutationContext<'gc, '_>,
+        class: GcCell<'gc, Class<'gc>>,
+        scope: Option<GcCell<'gc, Scope<'gc>>>,
+    ) -> Result<Object<'gc>, Error> {
+        let base = ScriptObjectData::base_new(
+            Some(base_proto),
+            ScriptObjectClass::InstancePrototype(class, scope),
+        );
+
+        Ok(VectorObject(GcCell::allocate(
+            mc,
+            VectorObjectData {
+                base,
+                vector: VectorStorage::new(0, false, class),
+            },
+        ))
+        .into())
+    }
+}
+
 impl<'gc> TObject<'gc> for VectorObject<'gc> {
     impl_avm2_custom_object!(base);
 

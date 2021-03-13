@@ -30,6 +30,7 @@ mod object;
 mod regexp;
 mod string;
 mod r#uint;
+mod vector;
 mod xml;
 mod xml_list;
 
@@ -493,6 +494,13 @@ pub fn load_player_globals<'gc>(
         activation,
         regexp::create_class(mc),
         regexp::regexp_deriver,
+        domain,
+        script,
+    )?;
+    class(
+        activation,
+        vector::create_class(mc),
+        vector::vector_deriver,
         domain,
         script,
     )?;
