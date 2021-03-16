@@ -2,6 +2,7 @@
 
 use crate::avm2::activation::Activation;
 use crate::avm2::class::{Class, ClassAttributes};
+use crate::avm2::globals::NS_VECTOR;
 use crate::avm2::method::Method;
 use crate::avm2::names::{Namespace, QName};
 use crate::avm2::object::{Object, VectorObject};
@@ -45,7 +46,7 @@ pub fn vector_deriver<'gc>(
 /// Construct `Sprite`'s class.
 pub fn create_class<'gc>(mc: MutationContext<'gc, '_>) -> GcCell<'gc, Class<'gc>> {
     let class = Class::new(
-        QName::new(Namespace::public(), "Vector"),
+        QName::new(Namespace::package(NS_VECTOR), "Vector"),
         Some(QName::new(Namespace::public(), "Object").into()),
         Method::from_builtin(instance_init),
         Method::from_builtin(class_init),
