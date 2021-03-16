@@ -582,6 +582,19 @@ swf_tests! {
     (as3_simplebutton_childshuffle, "avm2/simplebutton_childshuffle", 1),
     (as3_simplebutton_constr_params, "avm2/simplebutton_constr_params", 1),
     (as3_vector_int_access, "avm2/vector_int_access", 1),
+    (as3_vector_int_delete, "avm2/vector_int_delete", 1),
+    (as3_vector_int_coercion, "avm2/vector_int_coercion", 1),
+    (as3_vector_int_holes, "avm2/vector_int_holes", 1),
+    (as3_vector_number_coercion, "avm2/vector_number_coercion", 1),
+    (as3_vector_number_holes, "avm2/vector_number_holes", 1),
+    (as3_vector_uint_coercion, "avm2/vector_uint_coercion", 1),
+    (as3_vector_uint_holes, "avm2/vector_uint_holes", 1),
+    (as3_vector_string_coercion, "avm2/vector_string_coercion", 1),
+    (as3_vector_string_holes, "avm2/vector_string_holes", 1),
+    (as3_vector_bool_coercion, "avm2/vector_bool_coercion", 1),
+    (as3_vector_bool_holes, "avm2/vector_bool_holes", 1),
+    (as3_vector_es3class_coercion, "avm2/vector_es3class_coercion", 1),
+    (as3_vector_es4class_coercion, "avm2/vector_es4class_coercion", 1),
 }
 
 // TODO: These tests have some inaccuracies currently, so we use approx_eq to test that numeric values are close enough.
