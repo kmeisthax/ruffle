@@ -118,7 +118,7 @@ impl<'gc> FunctionObject<'gc> {
     }
 
     /// Construct a class with a custom object type as its prototype.
-    fn from_class_and_proto(
+    pub fn from_class_and_proto(
         activation: &mut Activation<'_, 'gc, '_>,
         class: GcCell<'gc, Class<'gc>>,
         mut class_proto: Object<'gc>,

@@ -637,11 +637,11 @@ impl<'a, 'gc, 'gc_context> Activation<'a, 'gc, 'gc_context> {
                     self.op_construct_prop(method, index, num_args)
                 }
                 Op::ConstructSuper { num_args } => self.op_construct_super(num_args),
-                Op::ApplyType { num_types } => self.op_apply_type(num_types),
                 Op::NewActivation => self.op_new_activation(),
                 Op::NewObject { num_args } => self.op_new_object(num_args),
                 Op::NewFunction { index } => self.op_new_function(method, index),
                 Op::NewClass { index } => self.op_new_class(method, index),
+                Op::ApplyType { num_types } => self.op_apply_type(num_types),
                 Op::NewArray { num_args } => self.op_new_array(num_args),
                 Op::CoerceA => self.op_coerce_a(),
                 Op::CoerceS => self.op_coerce_s(),
@@ -1475,25 +1475,6 @@ impl<'a, 'gc, 'gc_context> Activation<'a, 'gc, 'gc_context> {
         Ok(FrameControl::Continue)
     }
 
-    fn op_apply_type(&mut self, num_types: u32) -> Result<FrameControl<'gc>, Error> {
-        let args = self.context.avm2.pop_args(num_types);
-        let base = self.context.avm2.pop().coerce_to_object(self)?;
-
-        let mut args_classes = Vec::new();
-        for arg in args {
-            args_classes.push(
-                arg.coerce_to_object(self)?
-                    .as_class()
-                    .ok_or("Attempted to apply non-class as type argument to class!")?,
-            )
-        }
-
-        let applied = base.apply(self, &args_classes[..])?;
-        self.context.avm2.push(applied);
-
-        Ok(FrameControl::Continue)
-    }
-
     fn op_new_activation(&mut self) -> Result<FrameControl<'gc>, Error> {
         if let Some(activation_proto) = self.activation_proto {
             self.context.avm2.push(ScriptObject::object(
@@ -1585,6 +1566,34 @@ impl<'a, 'gc, 'gc_context> Activation<'a, 'gc, 'gc_context> {
         class_init.call(Some(new_class), &[], self, None)?;
 
         self.context.avm2.push(new_class);
+
+        Ok(FrameControl::Continue)
+    }
+
+    fn op_apply_type(&mut self, num_types: u32) -> Result<FrameControl<'gc>, Error> {
+        let args = self.context.avm2.pop_args(num_types);
+        let mut base = self.context.avm2.pop().coerce_to_object(self)?;
+        let base_proto = base
+            .get_property(base, &QName::new(Namespace::public(), "prototype"), self)?
+            .coerce_to_object(self)?;
+
+        let mut args_classes = Vec::new();
+        for arg in args {
+            args_classes.push(
+                arg.coerce_to_object(self)?
+                    .as_class()
+                    .ok_or("Attempted to apply non-class as type argument to class!")?,
+            )
+        }
+
+        let applied_proto = base_proto.apply(self, &args_classes[..])?;
+        let (applied, _class_constr) = FunctionObject::from_class_and_proto(
+            self,
+            applied_proto.as_class().unwrap(),
+            applied_proto,
+            base.get_scope(),
+        )?;
+        self.context.avm2.push(applied);
 
         Ok(FrameControl::Continue)
     }
