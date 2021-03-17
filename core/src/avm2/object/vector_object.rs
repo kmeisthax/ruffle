@@ -249,4 +249,29 @@ impl<'gc> TObject<'gc> for VectorObject<'gc> {
         ))
         .into())
     }
+
+    fn apply(
+        &self,
+        activation: &mut Activation<'_, 'gc, '_>,
+        params: &[GcCell<'gc, Class<'gc>>],
+    ) -> Result<Object<'gc>, Error> {
+        let self_class = self
+            .as_class()
+            .ok_or("Attempted to apply type arguments to non-class!")?;
+        let parameterized_class = self_class
+            .read()
+            .with_type_params(params, activation.context.gc_context);
+
+        let self_scope = self.get_scope();
+        let self_proto = self
+            .proto()
+            .ok_or("Attempted to apply type arguments to bare object!")?;
+
+        Ok(VectorObject::derive(
+            self_proto,
+            activation.context.gc_context,
+            parameterized_class,
+            self_scope,
+        )?)
+    }
 }
