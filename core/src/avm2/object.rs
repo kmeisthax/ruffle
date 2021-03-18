@@ -931,13 +931,16 @@ pub trait TObject<'gc>: 'gc + Collect + Debug + Into<Object<'gc>> + Clone + Copy
 
     /// Get this object's `Class`, or any `Class` on its prototype chain.
     ///
-    /// This only yields `None` for bare objects.
+    /// This only yields `None` for bare objects. However, ES3 classes wlll all
+    /// appear to be instances of `Object`.
     fn as_proto_class(&self) -> Option<GcCell<'gc, Class<'gc>>> {
         let mut class = self.as_class();
+        let mut proto = self.proto();
 
         while class.is_none() {
-            if let Some(proto) = self.proto() {
-                class = proto.as_class();
+            if let Some(my_proto) = proto {
+                class = my_proto.as_class();
+                proto = my_proto.proto();
             } else {
                 return None;
             }
