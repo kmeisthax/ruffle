@@ -268,12 +268,12 @@ impl<'gc> TObject<'gc> for VectorObject<'gc> {
             .proto()
             .ok_or("Attempted to apply type arguments to bare object!")?;
 
-        Ok(VectorObject::derive(
+        VectorObject::derive(
             self_proto,
             activation.context.gc_context,
             parameterized_class,
             self_scope,
-        )?)
+        )
     }
 
     fn as_vector_storage(&self) -> Option<Ref<VectorStorage<'gc>>> {
