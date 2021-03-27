@@ -51,6 +51,17 @@ impl<'gc> VectorObject<'gc> {
         ))
         .into())
     }
+
+    /// Wrap an existing vector in an object.
+    pub fn from_vector(
+        vector: VectorStorage<'gc>,
+        base_proto: Object<'gc>,
+        mc: MutationContext<'gc, '_>,
+    ) -> Object<'gc> {
+        let base = ScriptObjectData::base_new(Some(base_proto), ScriptObjectClass::NoClass);
+
+        VectorObject(GcCell::allocate(mc, VectorObjectData { base, vector })).into()
+    }
 }
 
 impl<'gc> TObject<'gc> for VectorObject<'gc> {

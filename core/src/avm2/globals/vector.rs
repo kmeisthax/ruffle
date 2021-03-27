@@ -9,6 +9,7 @@ use crate::avm2::object::{Object, TObject, VectorObject};
 use crate::avm2::scope::Scope;
 use crate::avm2::traits::Trait;
 use crate::avm2::value::Value;
+use crate::avm2::vector::VectorStorage;
 use crate::avm2::Error;
 use gc_arena::{GcCell, MutationContext};
 
@@ -86,6 +87,82 @@ pub fn set_length<'gc>(
     Ok(Value::Undefined)
 }
 
+/// `Vector.concat` impl
+pub fn concat<'gc>(
+    activation: &mut Activation<'_, 'gc, '_>,
+    this: Option<Object<'gc>>,
+    args: &[Value<'gc>],
+) -> Result<Value<'gc>, Error> {
+    if let Some(this) = this {
+        let mut new_vector_storage =
+            if let Some(vector) = this.as_vector_storage_mut(activation.context.gc_context) {
+                vector.clone()
+            } else {
+                return Err("Not a vector-structured object".into());
+            };
+
+        let my_class = this
+            .as_proto_class()
+            .ok_or("TypeError: Tried to concat into a bare object")?;
+        let val_class = new_vector_storage.value_type();
+
+        for arg in args.iter().map(|a| a.clone()) {
+            let arg_obj = arg.coerce_to_object(activation)?;
+            let arg_class = arg_obj
+                .as_proto_class()
+                .ok_or("TypeError: Tried to concat from a bare object")?;
+            if !arg_obj.is_of_type(my_class) {
+                return Err(format!(
+                    "TypeError: Cannot coerce argument of type {:?} to argument of type {:?}",
+                    arg_class.read().name(),
+                    my_class.read().name()
+                )
+                .into());
+            }
+
+            let old_vec = arg_obj.as_vector_storage();
+            let old_vec: Vec<Option<Value<'gc>>> = if let Some(old_vec) = old_vec {
+                old_vec.iter().collect()
+            } else {
+                continue;
+            };
+
+            for val in old_vec {
+                if let Some(val) = val {
+                    if let Ok(val_obj) = val.coerce_to_object(activation) {
+                        if !val_obj.is_of_type(val_class) {
+                            let other_val_class = val_obj
+                                .as_proto_class()
+                                .ok_or("TypeError: Tried to concat a bare object into a Vector")?;
+                            return Err(format!(
+                                "TypeError: Cannot coerce Vector value of type {:?} to type {:?}",
+                                other_val_class.read().name(),
+                                val_class.read().name()
+                            )
+                            .into());
+                        }
+                    }
+
+                    let coerced_val = VectorStorage::coerce(val, val_class, activation)?;
+                    new_vector_storage.push(coerced_val);
+                } else {
+                    new_vector_storage.push(None);
+                }
+            }
+        }
+
+        let vector_proto = activation.context.avm2.prototypes().vector;
+        return Ok(VectorObject::from_vector(
+            new_vector_storage,
+            vector_proto,
+            activation.context.gc_context,
+        )
+        .into());
+    }
+
+    Ok(Value::Undefined)
+}
+
 /// Vector deriver
 pub fn vector_deriver<'gc>(
     base_proto: Object<'gc>,
@@ -117,6 +194,10 @@ pub fn create_class<'gc>(mc: MutationContext<'gc, '_>) -> GcCell<'gc, Class<'gc>
     write.define_instance_trait(Trait::from_setter(
         QName::new(Namespace::public(), "length"),
         Method::from_builtin(set_length),
+    ));
+    write.define_instance_trait(Trait::from_method(
+        QName::new(Namespace::public(), "concat"),
+        Method::from_builtin(concat),
     ));
 
     class

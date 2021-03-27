@@ -114,6 +114,7 @@ pub struct SystemPrototypes<'gc> {
     pub stage: Object<'gc>,
     pub sprite: Object<'gc>,
     pub simplebutton: Object<'gc>,
+    pub vector: Object<'gc>,
 }
 
 impl<'gc> SystemPrototypes<'gc> {
@@ -161,6 +162,7 @@ impl<'gc> SystemPrototypes<'gc> {
             stage: empty,
             sprite: empty,
             simplebutton: empty,
+            vector: empty,
         }
     }
 }
@@ -498,7 +500,13 @@ pub fn load_player_globals<'gc>(
         domain,
         script,
     )?;
-    class(
+    activation
+        .context
+        .avm2
+        .system_prototypes
+        .as_mut()
+        .unwrap()
+        .vector = class(
         activation,
         vector::create_class(mc),
         vector::vector_deriver,
