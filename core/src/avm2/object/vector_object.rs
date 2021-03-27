@@ -256,6 +256,15 @@ impl<'gc> TObject<'gc> for VectorObject<'gc> {
         activation: &mut Activation<'_, 'gc, '_>,
         params: &[GcCell<'gc, Class<'gc>>],
     ) -> Result<Object<'gc>, Error> {
+        if params.len() != 1 {
+            return Err("Vector can only be parameterized with one type".into());
+        }
+
+        let param = params.get(0).cloned().unwrap();
+        if let Some(o) = activation.context.avm2.vector_proto_of(param) {
+            return Ok(o);
+        }
+
         let self_class = self
             .as_class()
             .ok_or("Attempted to apply type arguments to non-class!")?;
@@ -268,12 +277,19 @@ impl<'gc> TObject<'gc> for VectorObject<'gc> {
             .proto()
             .ok_or("Attempted to apply type arguments to bare object!")?;
 
-        VectorObject::derive(
+        let concrete_proto = VectorObject::derive(
             self_proto,
             activation.context.gc_context,
             parameterized_class,
             self_scope,
-        )
+        )?;
+
+        activation
+            .context
+            .avm2
+            .set_vector_proto_of(param, concrete_proto);
+
+        Ok(concrete_proto)
     }
 
     fn as_vector_storage(&self) -> Option<Ref<VectorStorage<'gc>>> {

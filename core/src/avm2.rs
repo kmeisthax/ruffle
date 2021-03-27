@@ -1,5 +1,6 @@
 //! ActionScript Virtual Machine 2 (AS3) support
 
+use crate::avm2::class::Class;
 use crate::avm2::globals::SystemPrototypes;
 use crate::avm2::method::Method;
 use crate::avm2::object::EventObject;
@@ -7,8 +8,9 @@ use crate::avm2::script::{Script, TranslationUnit};
 use crate::avm2::string::AvmString;
 use crate::context::UpdateContext;
 use crate::tag_utils::SwfSlice;
-use gc_arena::{Collect, MutationContext};
+use gc_arena::{Collect, GcCell, MutationContext};
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 use swf::avm2::read::Reader;
 
@@ -60,6 +62,41 @@ const BROADCAST_WHITELIST: [&str; 3] = ["enterFrame", "exitFrame", "frameConstru
 /// with a proper Avm2Error enum.
 pub type Error = Box<dyn std::error::Error>;
 
+#[derive(Collect)]
+#[collect(no_drop)]
+struct EqCell<'gc, T>(GcCell<'gc, T>)
+where
+    T: Collect + 'gc;
+
+impl<'gc, T> PartialEq for EqCell<'gc, T>
+where
+    T: Collect,
+{
+    fn eq(&self, other: &Self) -> bool {
+        GcCell::ptr_eq(self.0, other.0)
+    }
+}
+
+impl<'gc, T> Eq for EqCell<'gc, T> where T: Collect {}
+
+impl<'gc, T> Hash for EqCell<'gc, T>
+where
+    T: Collect,
+{
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.as_ptr().hash(state);
+    }
+}
+
+impl<'gc, T> From<GcCell<'gc, T>> for EqCell<'gc, T>
+where
+    T: Collect,
+{
+    fn from(cell: GcCell<'gc, T>) -> Self {
+        Self(cell)
+    }
+}
+
 /// The state of an AVM2 interpreter.
 #[derive(Collect)]
 #[collect(no_drop)]
@@ -83,6 +120,12 @@ pub struct Avm2<'gc> {
     /// collector does not support weak references.
     broadcast_list: HashMap<AvmString<'gc>, Vec<Object<'gc>>>,
 
+    /// All applications of `Vector`.
+    ///
+    /// `Vector` applications are stored this way specifically because there is
+    /// only one generic class in AS3.
+    vector_protos: HashMap<EqCell<'gc, Class<'gc>>, Object<'gc>>,
+
     #[cfg(feature = "avm_debug")]
     pub debug_output: bool,
 }
@@ -97,6 +140,7 @@ impl<'gc> Avm2<'gc> {
             globals,
             system_prototypes: None,
             broadcast_list: HashMap::new(),
+            vector_protos: HashMap::new(),
 
             #[cfg(feature = "avm_debug")]
             debug_output: false,
@@ -114,6 +158,16 @@ impl<'gc> Avm2<'gc> {
     /// This function panics if the interpreter has not yet been initialized.
     pub fn prototypes(&self) -> &SystemPrototypes<'gc> {
         self.system_prototypes.as_ref().unwrap()
+    }
+
+    /// Get a vector proto for a given class.
+    pub fn vector_proto_of(&self, param: GcCell<'gc, Class<'gc>>) -> Option<Object<'gc>> {
+        self.vector_protos.get(&param.into()).cloned()
+    }
+
+    /// Set the vector proto for a given class.
+    pub fn set_vector_proto_of(&mut self, param: GcCell<'gc, Class<'gc>>, new_proto: Object<'gc>) {
+        self.vector_protos.insert(param.into(), new_proto);
     }
 
     /// Run a script's initializer method.
