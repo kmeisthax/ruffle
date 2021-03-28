@@ -111,7 +111,7 @@ impl<'gc> FunctionObject<'gc> {
 
             derive(super_proto?, activation, class, scope)?
         } else {
-            ScriptObject::bare_object(activation.context.gc_context)
+            ScriptObject::bare_prototype(activation.context.gc_context, class, scope)
         };
 
         FunctionObject::from_class_and_proto(activation, class, class_proto, scope)
