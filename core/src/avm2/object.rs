@@ -888,7 +888,7 @@ pub trait TObject<'gc>: 'gc + Collect + Debug + Into<Object<'gc>> + Clone + Copy
         type_proto: Object<'gc>,
         check_interfaces: bool,
     ) -> Result<bool, Error> {
-        let mut my_proto = self.proto();
+        let mut my_proto: Option<Object<'gc>> = Some((*self).into());
 
         //TODO: Is it a verification error to do `obj instanceof bare_object`?
         while let Some(proto) = my_proto {
