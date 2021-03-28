@@ -180,7 +180,7 @@ pub fn create_class<'gc>(mc: MutationContext<'gc, '_>) -> GcCell<'gc, Class<'gc>
 
     let mut write = class.write(mc);
 
-    write.set_attributes(ClassAttributes::GENERIC);
+    write.set_attributes(ClassAttributes::GENERIC | ClassAttributes::FINAL);
 
     write.define_instance_trait(Trait::from_getter(
         QName::new(Namespace::public(), "length"),
