@@ -104,7 +104,7 @@ pub fn concat<'gc>(
         let my_class = this
             .as_proto_class()
             .ok_or("TypeError: Tried to concat into a bare object")?;
-        let val_class = new_vector_storage.value_type();
+        let my_param = new_vector_storage.value_proto();
 
         for arg in args.iter().map(|a| a.clone()) {
             let arg_obj = arg.coerce_to_object(activation)?;
@@ -112,12 +112,21 @@ pub fn concat<'gc>(
                 .as_proto_class()
                 .ok_or("TypeError: Tried to concat from a bare object")?;
             if !arg_obj.is_of_type(my_class) {
-                return Err(format!(
-                    "TypeError: Cannot coerce argument of type {:?} to argument of type {:?}",
-                    arg_class.read().name(),
-                    my_class.read().name()
-                )
-                .into());
+                let arg_param_obj = arg_class.read().params().get(0).copied().ok_or_else(|| {
+                    format!(
+                        "TypeError: Class {:?} has no valid parameters",
+                        arg_class.read().name()
+                    )
+                })?;
+
+                if !arg_param_obj.has_prototype_in_chain(my_param, true)? {
+                    return Err(format!(
+                        "TypeError: Cannot coerce argument of type {:?} to argument of type {:?}",
+                        arg_class.read().name(),
+                        my_class.read().name()
+                    )
+                    .into());
+                }
             }
 
             let old_vec = arg_obj.as_vector_storage();
@@ -129,21 +138,7 @@ pub fn concat<'gc>(
 
             for val in old_vec {
                 if let Some(val) = val {
-                    if let Ok(val_obj) = val.coerce_to_object(activation) {
-                        if !val_obj.is_of_type(val_class) {
-                            let other_val_class = val_obj
-                                .as_proto_class()
-                                .ok_or("TypeError: Tried to concat a bare object into a Vector")?;
-                            return Err(format!(
-                                "TypeError: Cannot coerce Vector value of type {:?} to type {:?}",
-                                other_val_class.read().name(),
-                                val_class.read().name()
-                            )
-                            .into());
-                        }
-                    }
-
-                    let coerced_val = VectorStorage::coerce(val, val_class, activation)?;
+                    let coerced_val = VectorStorage::coerce(val, my_param, activation)?;
                     new_vector_storage.push(coerced_val);
                 } else {
                     new_vector_storage.push(None);

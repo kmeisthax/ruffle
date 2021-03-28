@@ -782,7 +782,11 @@ pub trait TObject<'gc>: 'gc + Collect + Debug + Into<Object<'gc>> + Clone + Copy
     /// `Vector`s of that type.
     ///
     /// If the object is not a parameterized type, this yields an error. In
-    /// practice, this means only `Vector` can use this method.
+    /// practice, this means only `Vector` can use this method for the time
+    /// being.
+    ///
+    /// The type parameters should be the prototypes of the parameter types you
+    /// want to use.
     ///
     /// When a given type is parameterized with the same parameters multiple
     /// times, each application must return the same object. This is because
@@ -791,7 +795,7 @@ pub trait TObject<'gc>: 'gc + Collect + Debug + Into<Object<'gc>> + Clone + Copy
     fn apply(
         &self,
         _activation: &mut Activation<'_, 'gc, '_>,
-        _params: &[GcCell<'gc, Class<'gc>>],
+        _params: &[Object<'gc>],
     ) -> Result<Object<'gc>, Error> {
         Err("Not a parameterized type".into())
     }

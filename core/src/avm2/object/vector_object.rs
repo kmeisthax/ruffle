@@ -46,7 +46,7 @@ impl<'gc> VectorObject<'gc> {
             mc,
             VectorObjectData {
                 base,
-                vector: VectorStorage::new(0, false, class),
+                vector: VectorStorage::new(0, false, base_proto),
             },
         ))
         .into())
@@ -97,7 +97,7 @@ impl<'gc> TObject<'gc> for VectorObject<'gc> {
     ) -> Result<(), Error> {
         if name.namespace().is_package("") {
             if let Ok(index) = name.local_name().parse::<usize>() {
-                let type_of = self.0.read().vector.value_type();
+                let type_of = self.0.read().vector.value_proto();
                 let value = VectorStorage::coerce(value, type_of, activation)?;
 
                 self.0
@@ -131,7 +131,7 @@ impl<'gc> TObject<'gc> for VectorObject<'gc> {
     ) -> Result<(), Error> {
         if name.namespace().is_package("") {
             if let Ok(index) = name.local_name().parse::<usize>() {
-                let type_of = self.0.read().vector.value_type();
+                let type_of = self.0.read().vector.value_proto();
                 let value = VectorStorage::coerce(value, type_of, activation)?;
 
                 self.0
@@ -265,7 +265,7 @@ impl<'gc> TObject<'gc> for VectorObject<'gc> {
     fn apply(
         &self,
         activation: &mut Activation<'_, 'gc, '_>,
-        params: &[GcCell<'gc, Class<'gc>>],
+        params: &[Object<'gc>],
     ) -> Result<Object<'gc>, Error> {
         if params.len() != 1 {
             return Err("Vector can only be parameterized with one type".into());

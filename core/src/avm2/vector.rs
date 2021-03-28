@@ -3,7 +3,7 @@
 use crate::avm2::activation::Activation;
 use crate::avm2::class::Class;
 use crate::avm2::names::{Namespace, QName};
-use crate::avm2::object::TObject;
+use crate::avm2::object::{Object, TObject};
 use crate::avm2::value::Value;
 use crate::avm2::Error;
 use gc_arena::{Collect, GcCell};
@@ -39,11 +39,11 @@ pub struct VectorStorage<'gc> {
     /// incorrectly typed values to the given type if possible. Values that do
     /// not coerce would then be treated as vector holes and retrieved as a
     /// default value.
-    value_type: GcCell<'gc, Class<'gc>>,
+    value_proto: Object<'gc>,
 }
 
 impl<'gc> VectorStorage<'gc> {
-    pub fn new(length: usize, is_fixed: bool, value_type: GcCell<'gc, Class<'gc>>) -> Self {
+    pub fn new(length: usize, is_fixed: bool, value_proto: Object<'gc>) -> Self {
         let mut storage = Vec::new();
 
         storage.resize(length, None);
@@ -51,7 +51,7 @@ impl<'gc> VectorStorage<'gc> {
         VectorStorage {
             storage,
             is_fixed,
-            value_type,
+            value_proto,
         }
     }
 
@@ -75,19 +75,23 @@ impl<'gc> VectorStorage<'gc> {
 
     /// Get the default value for this vector.
     fn default(&self) -> Value<'gc> {
-        if self.value_type.read().name() == &QName::new(Namespace::public(), "int") {
+        if self.value_type().read().name() == &QName::new(Namespace::public(), "int") {
             Value::Integer(0)
-        } else if self.value_type.read().name() == &QName::new(Namespace::public(), "uint") {
+        } else if self.value_type().read().name() == &QName::new(Namespace::public(), "uint") {
             Value::Unsigned(0)
-        } else if self.value_type.read().name() == &QName::new(Namespace::public(), "Number") {
+        } else if self.value_type().read().name() == &QName::new(Namespace::public(), "Number") {
             Value::Number(0.0)
         } else {
             Value::Null
         }
     }
 
+    pub fn value_proto(&self) -> Object<'gc> {
+        self.value_proto
+    }
+
     pub fn value_type(&self) -> GcCell<'gc, Class<'gc>> {
-        self.value_type
+        self.value_proto.as_class().unwrap()
     }
 
     /// Coerce an incoming value into one compatible with our vector.
@@ -105,24 +109,28 @@ impl<'gc> VectorStorage<'gc> {
     ///    instance or subclass instance of the vector's type
     pub fn coerce(
         from: Value<'gc>,
-        to_type: GcCell<'gc, Class<'gc>>,
+        to_type: Object<'gc>,
         activation: &mut Activation<'_, 'gc, '_>,
     ) -> Result<Option<Value<'gc>>, Error> {
-        if to_type.read().name() == &QName::new(Namespace::public(), "int") {
+        let to_class = to_type
+            .as_class()
+            .ok_or("TypeError: Cannot coerce to something that is not a type!")?;
+
+        if to_class.read().name() == &QName::new(Namespace::public(), "int") {
             Ok(Some(from.coerce_to_i32(activation)?.into()))
-        } else if to_type.read().name() == &QName::new(Namespace::public(), "uint") {
+        } else if to_class.read().name() == &QName::new(Namespace::public(), "uint") {
             Ok(Some(from.coerce_to_u32(activation)?.into()))
-        } else if to_type.read().name() == &QName::new(Namespace::public(), "Number") {
+        } else if to_class.read().name() == &QName::new(Namespace::public(), "Number") {
             Ok(Some(from.coerce_to_number(activation)?.into()))
-        } else if to_type.read().name() == &QName::new(Namespace::public(), "String") {
+        } else if to_class.read().name() == &QName::new(Namespace::public(), "String") {
             Ok(Some(from.coerce_to_string(activation)?.into()))
-        } else if to_type.read().name() == &QName::new(Namespace::public(), "Boolean") {
+        } else if to_class.read().name() == &QName::new(Namespace::public(), "Boolean") {
             Ok(Some(from.coerce_to_boolean().into()))
         } else if matches!(from, Value::Undefined) || matches!(from, Value::Null) {
             Ok(None)
         } else {
             let object_form = from.coerce_to_object(activation)?;
-            if object_form.is_of_type(to_type) {
+            if object_form.is_of_type(to_class) {
                 return Ok(Some(from));
             }
 

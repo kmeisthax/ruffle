@@ -2,6 +2,7 @@
 
 use crate::avm2::method::{Method, NativeMethod};
 use crate::avm2::names::{Multiname, Namespace, QName};
+use crate::avm2::object::Object;
 use crate::avm2::script::TranslationUnit;
 use crate::avm2::string::AvmString;
 use crate::avm2::traits::{Trait, TraitKind};
@@ -39,7 +40,9 @@ pub struct Class<'gc> {
     name: QName<'gc>,
 
     /// The type parameters for this class.
-    params: Vec<GcCell<'gc, Class<'gc>>>,
+    ///
+    /// Type parameters should be the prototypes of the types in question.
+    params: Vec<Object<'gc>>,
 
     /// The name of this class's superclass.
     super_class: Option<Multiname<'gc>>,
@@ -176,9 +179,12 @@ impl<'gc> Class<'gc> {
     ///
     /// This is used to parameterize a generic type. The returned class will no
     /// longer be generic.
+    ///
+    /// The given parameters should be the prototypes of the types being used
+    /// to parameterize the type.
     pub fn with_type_params(
         &self,
-        params: &[GcCell<'gc, Class<'gc>>],
+        params: &[Object<'gc>],
         mc: MutationContext<'gc, '_>,
     ) -> GcCell<'gc, Class<'gc>> {
         let mut new_class = self.clone();
@@ -611,7 +617,7 @@ impl<'gc> Class<'gc> {
         self.attributes.contains(ClassAttributes::GENERIC)
     }
 
-    pub fn params(&self) -> &[GcCell<'gc, Class<'gc>>] {
+    pub fn params(&self) -> &[Object<'gc>] {
         &self.params[..]
     }
 }

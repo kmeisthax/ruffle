@@ -1579,10 +1579,11 @@ impl<'a, 'gc, 'gc_context> Activation<'a, 'gc, 'gc_context> {
 
         let mut args_classes = Vec::new();
         for arg in args {
+            let mut arg_obj = arg.coerce_to_object(self)?;
             args_classes.push(
-                arg.coerce_to_object(self)?
-                    .as_class()
-                    .ok_or("Attempted to apply non-class as type argument to class!")?,
+                arg_obj
+                    .get_property(arg_obj, &QName::new(Namespace::public(), "prototype"), self)?
+                    .coerce_to_object(self)?,
             )
         }
 
