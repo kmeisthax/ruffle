@@ -130,7 +130,7 @@ impl<'gc> VectorStorage<'gc> {
             Ok(None)
         } else {
             let object_form = from.coerce_to_object(activation)?;
-            if object_form.is_of_type(to_class) {
+            if object_form.has_prototype_in_chain(to_type, true)? {
                 return Ok(Some(from));
             }
 
