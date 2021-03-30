@@ -7,6 +7,7 @@ use crate::avm2::method::Method;
 use crate::avm2::names::{Namespace, QName};
 use crate::avm2::object::{Object, TObject, VectorObject};
 use crate::avm2::scope::Scope;
+use crate::avm2::string::AvmString;
 use crate::avm2::traits::Trait;
 use crate::avm2::value::Value;
 use crate::avm2::vector::VectorStorage;
@@ -152,6 +153,69 @@ pub fn concat<'gc>(
     Ok(Value::Undefined)
 }
 
+fn join_inner<'gc, 'a, 'ctxt, C>(
+    activation: &mut Activation<'a, 'gc, 'ctxt>,
+    this: Option<Object<'gc>>,
+    args: &[Value<'gc>],
+    mut conv: C,
+) -> Result<Value<'gc>, Error>
+where
+    C: for<'b> FnMut(Value<'gc>, &'b mut Activation<'a, 'gc, 'ctxt>) -> Result<Value<'gc>, Error>,
+{
+    let mut separator = args.get(0).cloned().unwrap_or(Value::Undefined);
+    if separator == Value::Undefined {
+        separator = ",".into();
+    }
+
+    if let Some(this) = this {
+        if let Some(vector) = this.as_vector_storage() {
+            let string_separator = separator.coerce_to_string(activation)?;
+            let mut accum = Vec::with_capacity(vector.length());
+
+            for (_, item) in vector.iter().enumerate() {
+                if matches!(item, Some(Value::Undefined))
+                    || matches!(item, Some(Value::Null))
+                    || item.is_none()
+                {
+                    accum.push("".into());
+                } else {
+                    accum.push(
+                        conv(item.unwrap(), activation)?
+                            .coerce_to_string(activation)?
+                            .to_string(),
+                    );
+                }
+            }
+
+            return Ok(AvmString::new(
+                activation.context.gc_context,
+                accum.join(&string_separator),
+            )
+            .into());
+        }
+    }
+
+    Ok(Value::Undefined)
+}
+
+/// Implements `Vector.join`
+pub fn join<'gc>(
+    activation: &mut Activation<'_, 'gc, '_>,
+    this: Option<Object<'gc>>,
+    args: &[Value<'gc>],
+) -> Result<Value<'gc>, Error> {
+    join_inner(activation, this, args, |v, _act| Ok(v))
+}
+
+/// Implements `Vector.toString`
+pub fn to_string<'gc>(
+    activation: &mut Activation<'_, 'gc, '_>,
+    this: Option<Object<'gc>>,
+    _args: &[Value<'gc>],
+) -> Result<Value<'gc>, Error> {
+    join_inner(activation, this, &[",".into()], |v, _act| Ok(v))
+}
+
 /// Vector deriver
 pub fn vector_deriver<'gc>(
     base_proto: Object<'gc>,
@@ -187,6 +251,14 @@ pub fn create_class<'gc>(mc: MutationContext<'gc, '_>) -> GcCell<'gc, Class<'gc>
     write.define_instance_trait(Trait::from_method(
         QName::new(Namespace::public(), "concat"),
         Method::from_builtin(concat),
+    ));
+    write.define_instance_trait(Trait::from_method(
+        QName::new(Namespace::public(), "join"),
+        Method::from_builtin(join),
+    ));
+    write.define_instance_trait(Trait::from_method(
+        QName::new(Namespace::public(), "toString"),
+        Method::from_builtin(to_string),
     ));
 
     class
