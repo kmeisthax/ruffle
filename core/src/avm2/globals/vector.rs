@@ -101,6 +101,9 @@ pub fn concat<'gc>(
                 return Err("Not a vector-structured object".into());
             };
 
+        let my_proto = this
+            .proto()
+            .ok_or("TypeError: Tried to concat into a bare object")?;
         let my_class = this
             .as_proto_class()
             .ok_or("TypeError: Tried to concat into a bare object")?;
@@ -111,22 +114,13 @@ pub fn concat<'gc>(
             let arg_class = arg_obj
                 .as_proto_class()
                 .ok_or("TypeError: Tried to concat from a bare object")?;
-            if !arg_obj.is_of_type(my_class) {
-                let arg_param_obj = arg_class.read().params().get(0).copied().ok_or_else(|| {
-                    format!(
-                        "TypeError: Class {:?} has no valid parameters",
-                        arg_class.read().name()
-                    )
-                })?;
-
-                if !arg_param_obj.has_prototype_in_chain(my_param, true)? {
-                    return Err(format!(
-                        "TypeError: Cannot coerce argument of type {:?} to argument of type {:?}",
-                        arg_class.read().name(),
-                        my_class.read().name()
-                    )
-                    .into());
-                }
+            if !arg_obj.is_coercible_to(my_proto)? {
+                return Err(format!(
+                    "TypeError: Cannot coerce argument of type {:?} to argument of type {:?}",
+                    arg_class.read().name(),
+                    my_class.read().name()
+                )
+                .into());
             }
 
             let old_vec = arg_obj.as_vector_storage();

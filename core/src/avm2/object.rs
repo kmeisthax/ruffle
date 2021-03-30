@@ -910,21 +910,29 @@ pub trait TObject<'gc>: 'gc + Collect + Debug + Into<Object<'gc>> + Clone + Copy
         Ok(false)
     }
 
-    /// Determine if this object is of a given type class.
+    /// Determine if this object is coercible to a given type.
     ///
-    /// This will also match supertypes.
-    fn is_of_type(self, type_class: GcCell<'gc, Class<'gc>>) -> bool {
-        if let Some(class) = self.as_class() {
-            if GcCell::ptr_eq(type_class, class) {
-                return true;
+    /// This will also match supertypes as well as other parameterizations of
+    /// our type in the case where our parameters can be coerced to the target
+    /// type's parameters.
+    fn is_coercible_to(self, type_proto: Object<'gc>) -> Result<bool, Error> {
+        if self.has_prototype_in_chain(type_proto, true)? {
+            return Ok(true);
+        }
+
+        //We don't bother checking if the type bearing these parameters is the
+        //same as we only have one parameterized type in the entire language.
+        if let (Some(self_class), Some(type_class)) = (self.as_proto_class(), type_proto.as_class())
+        {
+            if let (Some(self_param), Some(type_param)) = (
+                self_class.read().params().get(0).cloned(),
+                type_class.read().params().get(0).cloned(),
+            ) {
+                return self_param.is_coercible_to(type_param);
             }
         }
 
-        if let Some(proto) = self.proto() {
-            return proto.is_of_type(type_class);
-        }
-
-        false
+        Ok(false)
     }
 
     /// Get a raw pointer value for this object.
