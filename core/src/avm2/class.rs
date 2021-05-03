@@ -348,6 +348,7 @@ impl<'gc> Class<'gc> {
             mc,
             Self {
                 name: QName::dynamic_name(name),
+                params: Vec::new(),
                 super_class: None,
                 attributes: ClassAttributes::empty(),
                 protected_namespace: None,
