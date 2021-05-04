@@ -339,6 +339,41 @@ pub fn some<'gc>(
     Ok(Value::Undefined)
 }
 
+/// Implements `Vector.forEach`
+pub fn for_each<'gc>(
+    activation: &mut Activation<'_, 'gc, '_>,
+    this: Option<Object<'gc>>,
+    args: &[Value<'gc>],
+) -> Result<Value<'gc>, Error> {
+    if let Some(this) = this {
+        let callback = args
+            .get(0)
+            .cloned()
+            .unwrap_or(Value::Undefined)
+            .coerce_to_object(activation)?;
+        let receiver = args
+            .get(1)
+            .cloned()
+            .unwrap_or(Value::Null)
+            .coerce_to_object(activation)
+            .ok();
+        let mut iter = ArrayIter::new(activation, this)?;
+
+        while let Some(r) = iter.next(activation) {
+            let (i, item) = r?;
+
+            callback.call(
+                receiver,
+                &[item, i.into(), this.into()],
+                activation,
+                receiver.and_then(|r| r.proto()),
+            )?;
+        }
+    }
+
+    Ok(Value::Undefined)
+}
+
 /// Vector deriver
 pub fn vector_deriver<'gc>(
     base_proto: Object<'gc>,
@@ -394,6 +429,10 @@ pub fn create_class<'gc>(mc: MutationContext<'gc, '_>) -> GcCell<'gc, Class<'gc>
     write.define_instance_trait(Trait::from_method(
         QName::new(Namespace::public(), "some"),
         Method::from_builtin(some),
+    ));
+    write.define_instance_trait(Trait::from_method(
+        QName::new(Namespace::public(), "forEach"),
+        Method::from_builtin(for_each),
     ));
     write.define_instance_trait(Trait::from_method(
         QName::new(Namespace::public(), "toString"),
