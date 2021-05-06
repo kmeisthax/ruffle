@@ -4,12 +4,11 @@ use crate::avm2::activation::Activation;
 use crate::avm2::class::{Class, ClassAttributes};
 use crate::avm2::globals::array::ArrayIter;
 use crate::avm2::globals::NS_VECTOR;
-use crate::avm2::method::Method;
+use crate::avm2::method::{Method, NativeMethod};
 use crate::avm2::names::{Namespace, QName};
 use crate::avm2::object::{Object, TObject, VectorObject};
 use crate::avm2::scope::Scope;
 use crate::avm2::string::AvmString;
-use crate::avm2::traits::Trait;
 use crate::avm2::value::Value;
 use crate::avm2::vector::VectorStorage;
 use crate::avm2::Error;
@@ -397,46 +396,21 @@ pub fn create_class<'gc>(mc: MutationContext<'gc, '_>) -> GcCell<'gc, Class<'gc>
 
     write.set_attributes(ClassAttributes::GENERIC | ClassAttributes::FINAL);
 
-    write.define_instance_trait(Trait::from_getter(
-        QName::new(Namespace::public(), "length"),
-        Method::from_builtin(length),
-    ));
-    write.define_instance_trait(Trait::from_setter(
-        QName::new(Namespace::public(), "length"),
-        Method::from_builtin(set_length),
-    ));
-    write.define_instance_trait(Trait::from_getter(
-        QName::new(Namespace::public(), "fixed"),
-        Method::from_builtin(fixed),
-    ));
-    write.define_instance_trait(Trait::from_setter(
-        QName::new(Namespace::public(), "fixed"),
-        Method::from_builtin(set_fixed),
-    ));
-    write.define_instance_trait(Trait::from_method(
-        QName::new(Namespace::public(), "concat"),
-        Method::from_builtin(concat),
-    ));
-    write.define_instance_trait(Trait::from_method(
-        QName::new(Namespace::public(), "join"),
-        Method::from_builtin(join),
-    ));
-    write.define_instance_trait(Trait::from_method(
-        QName::new(Namespace::public(), "every"),
-        Method::from_builtin(every),
-    ));
-    write.define_instance_trait(Trait::from_method(
-        QName::new(Namespace::public(), "some"),
-        Method::from_builtin(some),
-    ));
-    write.define_instance_trait(Trait::from_method(
-        QName::new(Namespace::public(), "forEach"),
-        Method::from_builtin(for_each),
-    ));
-    write.define_instance_trait(Trait::from_method(
-        QName::new(Namespace::public(), "toString"),
-        Method::from_builtin(to_string),
-    ));
+    const PUBLIC_INSTANCE_PROPERTIES: &[(&str, Option<NativeMethod>, Option<NativeMethod>)] = &[
+        ("length", Some(length), Some(set_length)),
+        ("fixed", Some(fixed), Some(set_fixed)),
+    ];
+    write.define_public_builtin_instance_properties(PUBLIC_INSTANCE_PROPERTIES);
+
+    const PUBLIC_INSTANCE_METHODS: &[(&str, NativeMethod)] = &[
+        ("concat", concat),
+        ("join", join),
+        ("every", every),
+        ("some", some),
+        ("forEach", for_each),
+        ("toString", to_string),
+    ];
+    write.define_public_builtin_instance_methods(PUBLIC_INSTANCE_METHODS);
 
     class
 }
